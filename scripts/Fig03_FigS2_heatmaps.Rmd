@@ -1,0 +1,310 @@
+---
+title: 'Figure 3: heatmap species core + Figure S2: heatmap core genera'
+author: "Sofie Zacho Vestergaard"
+date: "2024-01-04"
+output: html_document
+---
+
+```{r}
+library(ampvis2)
+library(tidyverse)
+library(ggtext)
+```
+
+# load data
+```{r}
+d <- amp_load(otutable = 'data/ASV_table_combined.tsv',
+              taxonomy = 'data/ASVs_combined_MiDAS5.2.R1.sintax',
+              metadata = 'data/metadata.xlsx',
+              pruneSingletons = T) # remove singletons
+
+# merge replicates
+d_rep <- amp_merge_replicates(d, 
+                              merge_var = "SampleID_replicates", 
+                              round = 'up')
+
+d_rep$metadata <- d_rep$metadata %>%
+  rename(SampleID = SampleID_replicates)
+
+d_rep_filt_as <- amp_subset_samples(d_rep,
+                                    SampleContent %in% 'AS',
+                                    minreads = 10000, removeAbsentOTUs = F)
+
+set.seed(22) # set seed to make rarefaction reproducible
+# rarefy
+d_rare_as <- amp_rarefy(d_rep_filt_as, rarefy = 10000) # 10 000
+
+#normalise
+dasn <- normaliseTo100(d_rare_as)
+```
+
+
+##import corecrat list
+```{r}
+corecrat_gen <- readxl::read_excel("output/core&crat_genus.xlsx")
+corecrat_sp <- readxl::read_excel("output/core&crat_species.xlsx")
+```
+
+##subset
+```{r}
+#genera
+gen <- paste0("g__", corecrat_gen$Genus)
+as_corecrat_gen <- amp_subset_taxa(dasn, tax_vector = gen)
+
+#species
+sp <- paste0("s__", corecrat_sp$Species)
+as_corecrat_sp <- amp_subset_taxa(dasn, tax_vector = sp)
+```
+##long format
+```{r}
+long_as_corecrat_sp <- amp_export_long(as_corecrat_sp, 
+                                        tax_levels = "Species",
+                                        metadata_vars = c("SampleID", "SampleSite", "SampleContent", "SampleDate", "Project")) 
+
+long_as_corecrat_gen <- amp_export_long(as_corecrat_gen, 
+                                        tax_levels = "Genus",
+                                        metadata_vars = c("SampleID", "SampleSite", "SampleContent", "SampleDate", "Project")) 
+
+```
+
+ricalculate abundance per taxa
+```{r}
+##at species level
+long_as_corecrat_sp2 <- long_as_corecrat_sp %>% 
+  group_by(SampleID, SampleSite, SampleContent, SampleDate, Species) %>% 
+  summarise(rra_sp = sum(count)) 
+
+##at genus level
+long_as_corecrat_gen2 <- long_as_corecrat_gen %>% 
+  group_by(SampleID, SampleSite, SampleContent, SampleDate, Genus) %>% 
+  summarise(rra_gen = sum(count)) 
+```
+
+##join wiht corecrat info
+```{r}
+
+#species
+long_as_corecrat_sp2$Species <- gsub("s__", "", long_as_corecrat_sp2$Species)
+long_as_corecrat_sp2 <- long_as_corecrat_sp2 %>% 
+  left_join(., corecrat_sp[c("Species", "Genus", "Category")]) %>% 
+  subset(Category %in% c("strict core", "general core")) #subset for needed groups
+
+n_distinct(long_as_corecrat_sp2$Species) #total number of species in strict core and general core (from table in paper)
+
+#genera
+long_as_corecrat_gen2$Genus <- gsub("g__", "", long_as_corecrat_gen2$Genus)
+long_as_corecrat_gen2 <- long_as_corecrat_gen2 %>% 
+  left_join(., corecrat_gen[c("Genus", "Category")]) %>% 
+  subset(Category %in% c("strict core", "general core")) #subset for needed groups
+
+n_distinct(long_as_corecrat_gen2$Genus)  #total number of genera in strict core and general core (from table in paper)
+```
+sort by abundance
+```{r}
+#Species
+##get average abundance
+sp_sorted <- long_as_corecrat_sp2 %>% 
+  group_by(Species, Category) %>% 
+  summarise(mean_rra_sp = mean(rra_sp)) %>%
+  arrange(desc(mean_rra_sp)) %>% 
+  arrange(desc(Category))
+
+##create factors, levels and sort
+long_as_corecrat_sp3 <- long_as_corecrat_sp2 %>% 
+  mutate(Species = factor(Species, levels = sp_sorted$Species)) %>% 
+  mutate(Taxa = paste(Genus, Species, sep = " "))
+
+long_as_corecrat_sp3 <- long_as_corecrat_sp3[order(long_as_corecrat_sp3$Species), ]  #sort the whole dataframe based on ASv levels
+long_as_corecrat_sp3$Taxa <- factor(long_as_corecrat_sp3$Taxa, levels = unique(long_as_corecrat_sp3$Taxa))#sort TaxID as vector (<- this is the actual target)
+
+#Genera
+##get average abundance
+gen_sorted <- long_as_corecrat_gen2 %>% 
+  group_by(Genus, Category) %>% 
+  summarise(mean_rra_gen = mean(rra_gen)) %>%
+  arrange(desc(mean_rra_gen)) %>% 
+  arrange(desc(Category))
+
+##create factors, levels and sort
+long_as_corecrat_gen3 <- long_as_corecrat_gen2 %>% 
+  mutate(Genus = factor(Genus, levels = gen_sorted$Genus))  
+
+long_as_corecrat_gen3<- long_as_corecrat_gen3 %>% 
+  mutate(Genus = factor(Genus, levels = gen_sorted$Genus))
+long_as_corecrat_gen3 <- long_as_corecrat_gen3[order(long_as_corecrat_gen3$Genus), ]
+
+```
+
+
+plot
+```{r}
+
+
+
+long_as_corecrat_sp4 <- long_as_corecrat_sp3 %>% dplyr::group_by(SampleSite, Taxa) %>% 
+  dplyr::mutate(rra_sp_mean = mean(rra_sp)) %>% 
+  select(SampleSite, Category, Taxa, rra_sp_mean) %>% unique()
+
+
+ 
+ # Create the bins and corresponding colors
+bins <- c(0, 0.01, 0.1, 1, 5, 10, Inf)
+colors <- c("white","#FFF5EB", "#F5C9B0", "#EC9E75", "#E2733B", "#D94801")
+
+# Categorize the data into bins
+long_as_corecrat_sp4$bin <- cut(long_as_corecrat_sp4$rra_sp_mean, breaks = bins, labels = FALSE, right = FALSE)
+
+long_as_corecrat_sp4 <- long_as_corecrat_sp4 %>% separate(., Taxa, c('Genus','Species'), sep = ' ') 
+
+long_as_corecrat_sp4_f <- long_as_corecrat_sp4 %>% 
+  mutate(lab = case_when(str_detect(Species, "midas_s_") & str_detect(Genus, "Ca_") ~ paste0(str_replace(Genus, "Ca_", "*Ca.* "), ' ', Species),
+                         str_detect(Species, "Ca_") ~ paste0(str_replace(Species, "Ca_", "*Ca.* ")),
+                         str_detect(Genus, "Ca_") ~ paste0(str_replace(Genus, "Ca_", "*Ca.* ")),
+                        str_detect(Genus, "midas_g_") ~ paste0(Genus, ' ', Species),
+                         str_detect(Species, "midas_s_") & !str_detect(Genus, "midas_g_") ~ paste0("*",Genus, "*", ' ', Species),
+                         TRUE ~ paste0("*",Species, "*")
+                         )
+  ) %>% 
+  mutate(lab = if_else(str_detect(Genus, "midas_g_") | str_detect(Species, "midas_s_"),
+                       lab,
+                       str_replace_all(lab, '_',' ')))
+
+
+col_sp_core <- long_as_corecrat_sp4_f %>% 
+   ungroup() %>% 
+  select(lab, Category) %>% 
+  unique() %>% 
+  mutate(test_col = ifelse(Category %in% "strict core", "#7f6000", "#660000")) %>% 
+  pull(test_col)
+
+y_ax <- long_as_corecrat_sp4_f %>% 
+   ungroup() %>% 
+  select(lab, Category) %>% 
+  unique() %>% 
+  mutate(test_col = ifelse(Category %in% "strict core", "#7f6000", "#660000"))%>% 
+  pull(lab)
+ 
+long_as_corecrat_sp4_f$lab <- factor(long_as_corecrat_sp4_f$lab, levels = y_ax)
+# needs to make y axis right again
+
+ plot <- ggplot(long_as_corecrat_sp4_f, aes(x = SampleSite, y = lab, fill = as.factor(bin))) +
+  geom_tile() +
+  labs(y = "Species", fill = "% relative\n abundance", x = "WWTPs") +
+  scale_y_discrete(limits = rev, drop = T) +
+  scale_fill_manual(values = colors, 
+                    breaks = c(1,2,3,4,5,6), 
+                    labels = c("0-0.01", "0.01-0.1", "0.1-1", "1-5", "5-10", ">10")) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    axis.text.y = element_markdown(colour = rev(col_sp_core)),
+    axis.title = element_blank()
+  ) +
+  guides(fill = guide_legend(reverse = TRUE,
+                             override.aes = list(color = "black", size = 0.5))) 
+
+
+ 
+ggsave(plot ,filename="output/Fig03_Heatmap_core_species.png", width=11.5, height=7)
+ggsave(plot ,filename="output/Fig03_Heatmap_core_species.pdf", width=11.5, height=7,
+       useDingbats=FALSE, limitsize=FALSE)
+ 
+```
+
+```{r}
+
+long_as_corecrat_gen4 <- long_as_corecrat_gen3 %>% dplyr::group_by(SampleSite, Genus) %>% 
+  dplyr::mutate(rra_gen_mean = mean(rra_gen)) %>% 
+  select(SampleSite, Category, Genus, rra_gen_mean) %>% unique()
+
+
+# Categorize the data into bins
+long_as_corecrat_gen4$bin <- cut(long_as_corecrat_gen4$rra_gen_mean, breaks = bins, labels = FALSE, right = FALSE)
+
+
+long_as_corecrat_gen4_f <- long_as_corecrat_gen4 %>% 
+  mutate(lab = case_when(
+                         str_detect(Genus, "Ca_") ~ paste0(str_replace(Genus, "Ca_", "*Ca.* ")),
+                         str_detect(Genus, "midas_g_") ~ paste0(Genus),
+                         TRUE ~ paste0("*",Genus, "*")
+                         )
+  ) %>% 
+  mutate(lab = if_else(str_detect(Genus, "midas_g_"),
+                       lab,
+                       str_replace_all(lab, '_',' ')))
+
+
+col_gen_core <- gen_sorted %>% 
+   ungroup() %>% 
+  select(Genus, Category) %>% 
+  unique() %>% 
+  mutate(test_col = ifelse(Category == "strict core", "#7f6000", "#660000")) %>% 
+  pull(test_col)
+
+
+y_ax <- long_as_corecrat_gen4_f %>% 
+   ungroup() %>% 
+  select(lab, Category) %>% 
+  unique() %>% 
+  mutate(test_col = ifelse(Category %in% "strict core", "#7f6000", "#660000"))%>% 
+  pull(lab)
+ 
+long_as_corecrat_gen4_f$lab <- factor(long_as_corecrat_gen4_f$lab, levels = y_ax)
+# needs to make y axis right again
+
+
+#Genera
+ plot <- ggplot(long_as_corecrat_gen4_f, aes(x = SampleSite, y = lab, fill = as.factor(bin))) +
+  geom_tile() +
+ labs(y = "Genera", fill = "% relative\n abudance",
+       x = "WWTPs") +
+  scale_y_discrete(limits=rev, drop = T) +
+  scale_fill_manual(values = colors, 
+                    breaks = c(1,2,3,4,5,6), 
+                    labels = c("0-0.01", "0.01-0.1", "0.1-1", "1-5", "5-10", ">10")) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        axis.text.y = element_markdown(colour = rev(col_gen_core)),
+        axis.title = element_blank()
+        )+ guides(fill = guide_legend(reverse = TRUE,
+                             override.aes = list(color = "black", size = 0.5)))
+ 
+ 
+  ggsave(plot,filename="output/FigS2_Heatmap_core_genera.png", width=11, height=14)
+ggsave(plot ,filename="output/FigS2_Heatmap_core_genera.pdf", width=11, height=14, useDingbats=FALSE, limitsize=FALSE)
+```
+
+
+```{r}
+# Abundance of top 5 core genera
+tax_vector <- c('g__Ca_Phosphoribacter','g__Rhodobacter', 'g__Trichococcus',
+                'g__Acidovorax', 'g__Rhodoferax')
+
+# subset to relevant taxa
+d_strict_gen <- amp_subset_taxa(dasn, tax_vector = tax_vector)
+# make text heatmap
+hm_strcit_gen <- amp_heatmap(d_strict_gen,
+                             group_by = 'SampleSite',
+                             tax_aggregate = 'Genus',
+                             textmap = T,
+                             normalise = F)
+library(matrixStats)
+# calculate mean + standard deviation
+mean <- rowMeans(hm_strcit_gen)
+sd <- rowSds(as.matrix( hm_strcit_gen))
+
+```
+
+## how many core and CRAT ASVs are classified to genus and species level
+```{r}
+corecrat_asv <- readxl::read_excel("output/core&crat_ASV.xlsx")
+
+gen_na <- corecrat_asv %>%
+  summarize(count_na = sum(is.na(Genus)))
+spp_na <- corecrat_asv %>%
+  summarize(count_na = sum(is.na(Species)))
+
+1-(gen_na$count_na/length(corecrat_asv$OTU))
+1-(spp_na$count_na/length(corecrat_asv$OTU))
+
+```
+
+

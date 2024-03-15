@@ -1,0 +1,149 @@
+---
+title: 'Figure 1: mapDK + ordination'
+author: "Sofie Zacho Vestergaard"
+date: "2024-01-03"
+output: html_document
+---
+```{r}
+library(ampvis2)
+library(tidyverse)
+library(mapDK)
+library(ggtext)
+library(vegan)
+library(cowplot)
+```
+
+# load data
+```{r}
+d <- amp_load(otutable = 'data/ASV_table_combined.tsv',
+              taxonomy = 'data/ASVs_combined_MiDAS5.2.R1.sintax',
+              metadata = 'data/metadata.xlsx',
+              pruneSingletons = T) # remove singletons
+
+# merge replicates
+d_rep <- amp_merge_replicates(d, 
+                              merge_var = "SampleID_replicates", 
+                              round = 'up')
+
+d_rep$metadata <- d_rep$metadata %>%
+  rename(SampleID = SampleID_replicates)
+
+d_rep_filt_as <- amp_subset_samples(d_rep,
+                                    SampleContent %in% 'AS',
+                                    minreads = 10000, removeAbsentOTUs = F)
+
+set.seed(22) # set seed to make rarefaction reproducible
+# rarefy
+d_rare_as <- amp_rarefy(d_rep_filt_as, rarefy = 10000) # 10 000
+
+#normalise
+dasn <- normaliseTo100(d_rare_as)
+dasn <- amp_subset_samples(dasn, removeAbsentOTUs = T)
+
+```
+## Figure 1.A
+```{r}
+
+all_plot <- dasn$metadata %>% select(SampleSite, Region, Latitude, 
+                                    Longitude, Design, PEdesign, `IndustrialLoad[%]`,Project ) %>% 
+  unique()
+
+
+m <- mapDK(detail = 'region',
+           map.fill = 'grey95',
+           map.colour = 'black')
+
+
+#Region
+col <- c('#FC8D59','#91BFDB','#D73027','#FEE090','#4575B4')
+
+m2 <- m + geom_point(data = all_plot,
+                     aes(x=Longitude,
+                         y=Latitude,
+                         fill = Region,
+                         group = Region), 
+                     stroke = 1,
+                     size=4,
+                     shape = 21,
+                     alpha = 0.9,
+                     colour = 'black'
+) +
+  scale_fill_manual('Region', values = col ) +
+  theme(legend.text = element_text(size = 8),
+        legend.title = element_text(size = 10, face = 'bold'),
+        legend.position = 'none') +
+  scale_x_continuous(limits = c( NA, 13))
+
+region <- c('Northern', 'Central', 'Southern', 'Funen', 'Zealand')
+reg_long <- c(9.6,8.45,8.85,9.85,11.75)
+reg_lat <- c(56.93,56.18, 55.577333,55.3,55.45)
+wwtp <- c(12, 19, 19, 13, 21)
+lab_reg <- data.frame(region, reg_long, reg_lat, wwtp)
+
+
+m3 <- m2+
+  geom_richtext(data =lab_reg, aes(x=reg_long, y= reg_lat, 
+                                   label = paste0("<span style='color:black; font-size:8pt'>**", region, "**</span>",
+                                                  "<span style='color:black; font-size:6.5pt'>", "<br>",
+                                                  wwtp, " WWTPs", "</span>"), 
+                                   group = region),
+                label.padding = grid::unit(rep(1.4, 4), "pt"),
+                lineheight = 0.05,
+                hjust = 0, vjust = 0.5,
+                alpha = 0.9) +
+  labs(tag = 'A') +
+  theme(plot.tag = element_text(face = 'bold'))
+
+
+
+```
+
+
+## Figure 1.B
+```{r}
+
+pcoa_as_bray <- amp_ordinate(dasn,
+             type = 'PCoA',
+             distmeasure = "bray",
+             transform = 'none',
+             filter_species = 0,
+             sample_color_by = "SampleSite",
+             sample_colorframe_label = "SampleSite"
+             ) +
+  theme(legend.position = "none") 
+
+# distance matrix
+dist_as_bray <- vegdist(t(dasn$abund), method = "bray")
+#adonis
+adonis_as_plant <- adonis2(dist_as_bray ~ SampleSite, data = dasn$metadata)
+
+# label with results from adonis
+p_pcoa_as_bray_plant <- pcoa_as_bray +
+  geom_richtext(x=0.15, y=0.29,
+                    label = paste0("R\u00b2 = ", round(adonis_as_plant$R2[[1]], 2), "<br> p-value = ", adonis_as_plant$`Pr(>F)`[[1]]),
+                fontface="bold",hjust = 0,
+                size = 3.2,
+                color = 'black') +
+  labs(tag = 'B') +
+  theme(plot.tag = element_text(face = 'bold'))
+  
+p_pcoa_as_bray_plant[["layers"]][[2]][["aes_params"]][["size"]] <- 2
+
+
+
+```
+
+
+```{r}
+# Combine plots into one
+p_final <- (m3 + plot_spacer() + p_pcoa_as_bray_plant) + plot_layout(widths  = c(1.1, 0.05, 1.25))
+
+# save plot
+ggsave(p_final, filename="output/Fig01_map_PCoA.png", 
+       width=8.8, height=4.5)
+ ggsave(p_final, filename="output/Fig01_map_PCoA.pdf", 
+       width=8.8, height=4.5, useDingbats=FALSE, limitsize=FALSE)
+```
+
+
+

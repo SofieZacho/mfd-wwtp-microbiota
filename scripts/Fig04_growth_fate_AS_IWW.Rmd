@@ -1,0 +1,513 @@
+---
+title: 'Figure 4: Growth fate plots'
+author: "Sofie Zacho Vestergaard"
+date: "2024-01-04"
+output: html_document
+---
+```{r}
+library(ampvis2)
+library(tidyverse)
+library(patchwork)
+library(readxl)
+library(ggrepel)
+library(cowplot)
+
+```
+
+
+
+```{r}
+d <- amp_load(otutable = 'data/ASV_table_combined.tsv',
+              taxonomy = 'data/ASVs_combined_MiDAS5.2.R1.sintax',
+              metadata = 'data/metadata.xlsx',
+              pruneSingletons = T) # remove singletons
+
+# merge replicates
+d_rep <- amp_merge_replicates(d, 
+                              merge_var = "SampleID_replicates", 
+                              round = 'up')
+
+d_rep$metadata <- d_rep$metadata %>%
+  rename(SampleID = SampleID_replicates)
+
+d_rep_filt_as <- amp_subset_samples(d_rep,
+                                    SampleContent %in% 'AS',
+                                    minreads = 10000, removeAbsentOTUs = F)
+d_rep_filt_iww <- amp_subset_samples(d_rep,
+                                     SampleContent %in% 'IWW',
+                                     minreads = 50000,removeAbsentOTUs = F)
+
+
+set.seed(22)
+# rarefy
+d_rare_as <- amp_rarefy(d_rep_filt_as, rarefy = 10000) # 10 000
+d_rare_iww <- amp_rarefy(d_rep_filt_iww, rarefy = 50000) # 50 000 
+
+
+dasn <- normaliseTo100(d_rare_as)
+diwwn <- normaliseTo100(d_rare_iww)
+
+```
+
+
+# load 
+```{r}
+fate <- read_xlsx('output/growth_fate_ASV.xlsx')
+
+core_crat <- read_xlsx("output/core&crat_ASV.xlsx") %>% 
+  mutate(Category = case_when(Category == 'strict core' ~ 'Strict core',
+                              Category == 'general core' ~ 'General core',
+                              Category == 'loose core' ~ 'Loose core',
+                              .default = Category))
+
+fate_only <- fate %>% select(ASV, growth_fate)
+
+fate_core_crat <- core_crat %>% 
+  left_join(., fate_only, by = c('OTU'='ASV'))
+```
+
+
+# make function for plotting core groups
+```{r}
+fate_func <- function(variable) {
+  
+  Group <- paste0(variable)
+  
+  # specify tax_vector
+  tax_vector = core_crat %>% 
+    filter(Category %in% Group) %>% 
+    pull(OTU)
+  
+  
+  # subset data to only wanted taxa
+  as_core_crat <- dasn %>% amp_subset_taxa(., tax_vector = tax_vector)
+  
+  # make text heatmap
+  heat_as_core_crat <- amp_heatmap(as_core_crat,
+                                   normalise = F,
+                                   tax_show = 100000000,
+                                   tax_aggregate = 'OTU',
+                                   group_by = 'SampleSite',
+                                   textmap = T)
+  
+  # Convert row names to a column
+  heat_as_core_crat <- tibble::rownames_to_column(heat_as_core_crat, var = "OTU")
+  
+  # Pivot longer while keeping row names
+  dlong_as <- heat_as_core_crat %>%
+    pivot_longer(cols = -OTU, names_to = "SampleSite", values_to = "mean_rel_abd")
+  
+  # combine with core and CRAT data
+  dlong_coreCRAT <- dlong_as %>% left_join(., core_crat, by = 'OTU')
+  
+  # combine with fata data
+  dlong_AS_fate <- dlong_coreCRAT %>% 
+    left_join(., fate_only, by = c('OTU'='ASV'))
+  
+  
+  dlong_AS_fate <- dlong_AS_fate %>% group_by(SampleSite, growth_fate) %>% 
+    mutate(sum_fate = sum(mean_rel_abd), # Cumulative abundance of each growth fate of each plant
+           growth_fate = if_else(is.na(growth_fate) ==T, # if ASV does not have assigned growth fate label as 'inconclusive'
+                                 'inconclusive',
+                                 growth_fate))
+  # count how many ASVs in each growth group
+  stat <- dlong_AS_fate %>% ungroup() %>%  select(OTU, growth_fate) %>% 
+    unique() %>% 
+    count(growth_fate)
+  # combine data
+  dlong_AS_fate <- dlong_AS_fate %>% left_join(., stat, by = 'growth_fate')
+  
+  fate_plant <- dlong_AS_fate %>% select(SampleSite, growth_fate, sum_fate, n) %>% 
+    unique() %>% 
+    group_by(growth_fate) %>% 
+    mutate(mean_fate = mean(sum_fate)) 
+  
+  
+  fate_as <- fate_plant %>% select(growth_fate, mean_fate, n) %>% unique() %>% 
+    mutate(
+      Source = 'AS') 
+  fate_as <- fate_as%>% 
+    mutate(growth_fate_number = paste0(growth_fate, ' (',n,')'))
+  
+
+  ###IWW (same stuff as done for AS)
+  
+  as_core_crat <- diwwn %>% amp_subset_taxa(., tax_vector = tax_vector)
+  
+  heat_as_core_crat <- amp_heatmap(as_core_crat,
+                                   normalise = F,
+                                   tax_show = 100000000,
+                                   tax_aggregate = 'OTU',
+                                   group_by = 'SampleSite',
+                                   textmap = T)
+  
+  # Convert row names to a column
+  heat_as_core_crat <- tibble::rownames_to_column(heat_as_core_crat, var = "OTU")
+  
+  # Pivot longer while keeping row names
+  dlong_as <- heat_as_core_crat %>%
+    pivot_longer(cols = -OTU, names_to = "SampleSite", values_to = "mean_rel_abd")
+  
+  dlong_coreCRAT <- dlong_as %>% left_join(., core_crat, by = 'OTU')
+  
+  fate_only <- fate %>% select(ASV, growth_fate)
+  
+  dlong_AS_fate <- dlong_coreCRAT %>% 
+    left_join(., fate_only, by = c('OTU'='ASV')) %>% 
+    mutate(growth_fate = if_else(is.na(growth_fate) ==T,
+                                 'inconclusive',
+                                 growth_fate))
+  
+  
+  dlong_AS_fate <- dlong_AS_fate %>% group_by(SampleSite, growth_fate) %>% 
+    mutate(sum_fate = sum(mean_rel_abd)) 
+ 
+  new <- fate_as  %>%  select(growth_fate, growth_fate_number)
+  
+  stat <- dlong_AS_fate %>% ungroup() %>%  select(OTU, growth_fate) %>% 
+    unique() %>% 
+    count(growth_fate) %>% 
+    left_join(., new, by = 'growth_fate')
+  
+  
+  
+  dlong_AS_fate <- dlong_AS_fate %>% left_join(., stat, by = 'growth_fate')
+  
+  fate_plant <- dlong_AS_fate %>% select(SampleSite, growth_fate, sum_fate,n, growth_fate_number) %>% 
+    unique() %>% 
+    group_by(growth_fate) %>% 
+    mutate(mean_fate = mean(sum_fate))
+  
+  
+  fate_iww <- fate_plant %>% select(growth_fate, mean_fate, n, growth_fate_number) %>% unique() %>% 
+    mutate(
+      Source = 'IWW')
+  
+  # combine AS and IWW data 
+  fate_tot <- rbind(fate_as, fate_iww)
+  
+  
+  
+  fate_tot <- fate_tot %>% mutate(growth_fate = factor(growth_fate,
+                                                       levels = c('inconclusive',
+                                                                  'disappearing','surviving','growing')),
+                                  Source = factor(Source,
+                                                  levels = c('IWW','AS')))
+  
+  
+  ### plot
+  col = c("#e1e1e1",'#c27ba0','#ffe599','#b6d7a8')
+  
+  # make data frame for plotting
+  make_dub <- fate_tot %>% 
+    group_by(Source)  %>% 
+    arrange(fct_rev( growth_fate)) %>% arrange(Source) %>% 
+    mutate(mean_abun_sum = cumsum(mean_fate), 
+           SampleContent_num = as.numeric(Source))
+  
+  make_dub1 <- mutate(make_dub, SampleContent_num = SampleContent_num - 0.8)
+  
+  df_for_plot <- 
+    rbind(make_dub, make_dub1)
+  
+  pl <- df_for_plot %>%  
+    ggplot(aes(x=SampleContent_num, y=mean_fate, fill=growth_fate)) + 
+    geom_area(linewidth = 0.1, color = "grey60", alpha = 0.9) + 
+    scale_fill_manual(name ='Fate', 
+                      values = setNames(col, c('inconclusive', 'disappearing', 'surviving', 'growing')),
+                      labels = rev(df_for_plot$growth_fate_number)) +
+    geom_label_repel(
+      data = make_dub,
+      aes(y =mean_abun_sum - 0.5*mean_fate,
+          x = SampleContent_num-0.4,
+          label = paste0(round(mean_fate, 1), "%",' (',n,')')),
+      size=3.5,
+      force_pull = 100,
+      force = 13, 
+      nudge_x = 0, #nudge_y = -0.0, 
+      label.padding = unit(0.12, "lines"),
+      fontface = 'bold',
+      seed = 4,
+      direction = "y")+
+    theme_light() +
+    labs(y = 'Cumulative abudance (%)',
+         title = paste0(Group, ' (',length(tax_vector),' ASVs)'))+
+    theme(axis.title.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.text.x = element_text(size = 10),
+          axis.text.y = element_text(size = 10),
+          axis.title.y = element_blank(),
+          legend.position = 'none') +
+    scale_y_continuous(expand = c(0,0,0.04,0),
+                       limits = c(0,20)) +
+    scale_x_continuous(expand = c(0,0), breaks = label_positions, labels = label_text)
+
+}
+```
+
+```{r}
+
+# Define the specific positions and labels
+label_positions <- c("IWW" = 0.6, "AS" = 1.6)
+label_text <- names(label_positions)
+
+
+
+
+p_sc <- fate_func(variable = 'Strict core')
+p_gc <- fate_func(variable = 'General core')
+p_lc <- fate_func(variable = 'Loose core')
+p_crat <- fate_func(variable = 'CRAT')
+```
+
+
+```{r}
+# combined plot for all core groupings
+com <- p_sc + labs(tag = 'B') +
+  theme(plot.tag = element_text(face = 'bold')) + 
+  p_gc +p_lc + p_crat
+
+com + plot_layout(ncol = 2, heights = c(1, 1))
+
+```
+
+
+#All - growth fates
+```{r}
+# AS
+heat_as_core_crat <- amp_heatmap(dasn,
+                                 normalise = F,
+                                 tax_show = 1000000000,
+                                 tax_aggregate = 'OTU',
+                                 group_by = 'SampleSite',
+                                 textmap = T)
+saveRDS(heat_as_core_crat, "output/heat_as_only_ASV_label.rds")
+# Convert row names to a column
+heat_as_core_crat <- tibble::rownames_to_column(heat_as_core_crat, var = "OTU")
+
+# Pivot longer while keeping row names
+dlong_as <- heat_as_core_crat %>%
+  pivot_longer(cols = -OTU, names_to = "SampleSite", values_to = "mean_rel_abd")
+
+
+fate_only <- fate %>% select(ASV, growth_fate)
+dlong_AS_fate <- dlong_as %>% 
+  left_join(., fate_only, by = c('OTU'='ASV'))
+
+
+
+
+dlong_AS_fate <- dlong_AS_fate %>% mutate(growth_fate = if_else(is.na(growth_fate) ==T,
+                                                                'inconclusive',
+                                                                growth_fate))
+
+dlong_AS_fate <- dlong_AS_fate %>%   group_by(SampleSite, growth_fate) %>% 
+  mutate(sum_fate = sum(mean_rel_abd))
+
+stat <- dlong_AS_fate %>% ungroup() %>%  select(OTU, growth_fate) %>% 
+  unique() %>% 
+  count(growth_fate)
+
+dlong_AS_fate <- dlong_AS_fate %>% left_join(., stat, by = 'growth_fate')
+
+fate_plant <- dlong_AS_fate %>% select(SampleSite, growth_fate, sum_fate, n) %>% 
+  unique() %>% 
+  group_by(growth_fate) %>% 
+  mutate(mean_fate = mean(sum_fate))
+
+
+test <- fate_plant %>% filter(SampleSite %in% 'Aars')
+
+fate_as <- fate_plant %>% select(growth_fate, mean_fate, n) %>% unique() %>% 
+  mutate(
+    Source = 'AS') 
+fate_as <- fate_as%>% 
+  mutate(growth_fate_number = paste0(growth_fate, ' (',n,')'))
+
+
+```
+
+
+
+
+```{r}
+###IWW
+
+heat_iww_core_crat <- amp_heatmap(diwwn,
+                                 normalise = F,
+                                 tax_show = 100000000,
+                                 tax_aggregate = 'OTU',
+                                 group_by = 'SampleSite',
+                                 textmap = T)
+
+saveRDS(heat_iww_core_crat, 'output/heat_iww_ASV_label.rds')
+# Convert row names to a column
+heat_iww_core_crat <- tibble::rownames_to_column(heat_iww_core_crat, var = "OTU")
+
+# Pivot longer while keeping row names
+dlong_as <- heat_iww_core_crat %>%
+  pivot_longer(cols = -OTU, names_to = "SampleSite", values_to = "mean_rel_abd")
+
+
+dlong_coreCRAT <- dlong_as %>% left_join(., core_crat, by = 'OTU')
+
+fate_only <- fate %>% select(ASV, growth_fate)
+
+dlong_AS_fate <- dlong_coreCRAT %>% 
+  left_join(., fate_only, by = c('OTU'='ASV')) %>% 
+  mutate(growth_fate = if_else(is.na(growth_fate) ==T,
+                               'inconclusive',
+                               growth_fate))
+
+
+dlong_AS_fate <- dlong_AS_fate %>% group_by(SampleSite, growth_fate) %>% 
+  mutate(sum_fate = sum(mean_rel_abd)) 
+
+new <- fate_as  %>%  select(growth_fate, growth_fate_number)
+
+stat <- dlong_AS_fate %>% ungroup() %>%  select(OTU, growth_fate) %>% 
+  unique() %>% 
+  count(growth_fate) %>% 
+  left_join(., new, by = 'growth_fate')
+
+
+
+dlong_AS_fate <- dlong_AS_fate %>% left_join(., stat, by = 'growth_fate')
+
+fate_plant <- dlong_AS_fate %>% select(SampleSite, growth_fate, sum_fate,n, growth_fate_number) %>% 
+  unique() %>% 
+  group_by(growth_fate) %>% 
+  mutate(mean_fate = mean(sum_fate))
+
+
+fate_iww <- fate_plant %>% select(growth_fate, mean_fate, n, growth_fate_number) %>% unique() %>% 
+  mutate(
+    Source = 'IWW')
+
+```
+
+
+```{r}
+# combine as and iww
+fate_tot <- rbind(fate_as, fate_iww)
+
+
+
+fate_tot <- fate_tot %>% mutate(growth_fate = factor(growth_fate,
+                                                     levels = c('inconclusive',
+                                                                'disappearing','surviving','growing')),
+                                Source = factor(Source,
+                                                levels = c('IWW','AS')))
+
+
+### plot
+col = c("#e1e1e1",'#c27ba0','#ffe599','#b6d7a8')
+
+make_dub <- fate_tot %>% 
+  group_by(Source)  %>% 
+  arrange(fct_rev( growth_fate)) %>% arrange(Source) %>% 
+  mutate(mean_abun_sum = cumsum(mean_fate), 
+         SampleContent_num = as.numeric(Source))
+
+make_dub1 <- mutate(make_dub, SampleContent_num = SampleContent_num - 0.8)
+
+df_for_plot <- 
+  rbind(make_dub, make_dub1)
+
+# Define the specific positions and labels
+label_positions <- c("IWW" = 0.6, "AS" = 1.6)
+label_text <- names(label_positions)
+
+p_all_fate <- df_for_plot %>%  
+  ggplot(aes(x=SampleContent_num, y=mean_fate, fill=growth_fate)) + 
+  geom_area(linewidth = 0.1, color = "grey60", alpha = 0.9) + 
+  scale_fill_manual(name ='Fate', 
+                    values = setNames(col, c('inconclusive', 'disappearing', 'surviving', 'growing')),
+                    labels = rev(df_for_plot$growth_fate_number)) +
+  geom_label_repel(
+      data = make_dub,
+      aes(y =mean_abun_sum - 0.5*mean_fate,
+          x = SampleContent_num-0.4,
+          label = paste0(round(mean_fate, 1), "%",' (',n,')')),
+      size=3.5,
+      force_pull = 5,
+      force = 0.1, nudge_x = 0, 
+      #nudge_y = -0.0, 
+      direction = "y", label.padding = unit(0.12, "lines"),
+      fontface = 'bold',
+      seed = 4) +
+  theme_light() +
+  labs(y = 'Cumulative abudance (%)',
+       title = paste0('All ASVs'))+
+  theme(axis.title.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_text(size = 10),
+        axis.title.y = element_text(size = 16), 
+        legend.position = 'none') +
+  scale_x_continuous(expand = c(0,0), breaks = label_positions, labels = label_text) +
+  scale_y_continuous(expand = c(0,0))
+
+
+```
+
+# combine all plots and save
+```{r}
+pf <- p_all_fate + labs(tag = 'A') +
+  theme(plot.tag = element_text(face = 'bold')) 
+
+
+p_final <- (pf + plot_spacer() + com) + plot_layout(widths  = c(0.65, 0.07, 1.28))
+
+# put on legend
+leg <- df_for_plot %>%  
+  ggplot(aes(x=SampleContent_num, y=mean_fate, fill=growth_fate)) + 
+  geom_area(linewidth = 0.1, color = "grey60", alpha = 0.9) +
+  theme(legend.position = "bottom") +
+  scale_fill_manual(name = "Fate",
+                    values = col,
+                    labels = c("Inconclusive", "Disappearing", "Surviving", "Growing"))
+
+
+# Extract the legend from the existing plot
+legend <- get_legend(leg)
+
+pfi <- p_final/legend + plot_layout(heights = c(0.95,0.05))
+
+ggsave('output/Fig04_fate_all_ASVs_core.png',
+       pfi,
+       width = 9.4,
+       height = 6.8,
+       dpi = 320)
+
+ggsave('output/Fig04_fate_all_ASVs_core.pdf',
+       pfi,
+       width = 9.4,
+       height = 6.8, useDingbats=FALSE, limitsize=FALSE)
+
+```
+
+## Abundance Acidovorax and Trichoccus in IWW
+```{r}
+
+d_at <- amp_subset_taxa(diwwn, tax_vector = c('ASV113','ASV118','ASV13','ASV162','ASV235','ASV4',
+                                              'ASV17'))
+
+h <- amp_heatmap(d_at,
+                 tax_aggregate = 'Genus',
+                 normalise = F,
+                 group_by = 'SampleSite',
+                 textmap = T)
+
+rowMeans(h) %>% sum()
+
+
+
+core <- fate_core_crat %>% filter(!Category %in% 'CRAT')
+CRAT <- fate_core_crat %>% filter(Category %in% 'CRAT')
+
+core %>% dplyr::count(growth_fate)
+CRAT %>% dplyr::count(growth_fate)
+
+
+```
+

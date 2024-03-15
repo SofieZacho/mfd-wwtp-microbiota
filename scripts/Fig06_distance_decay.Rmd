@@ -1,0 +1,232 @@
+---
+title: 'Figure 6: distance decay'
+author: "Sofie Zacho Vestergaard"
+date: "2024-01-04"
+output: html_document
+---
+
+```{r}
+library(ampvis2)
+library(tidyverse)
+library(patchwork)
+library(readxl)
+library(vegan)
+library(geosphere)
+library(ggtext)
+library(viridis)
+library(cowplot)
+```
+
+
+```{r}
+d <- amp_load(otutable = 'data/ASV_table_combined.tsv',
+              taxonomy = 'data/ASVs_combined_MiDAS5.2.R1.sintax',
+              metadata = 'data/metadata.xlsx',
+              pruneSingletons = T) # remove singletons
+
+# merge replicates
+d_rep <- amp_merge_replicates(d, 
+                              merge_var = "SampleID_replicates", 
+                              round = 'up')
+
+d_rep$metadata <- d_rep$metadata %>%
+  rename(SampleID = SampleID_replicates)
+
+d_rep_filt_as <- amp_subset_samples(d_rep,
+                                    SampleContent %in% 'AS',
+                                    minreads = 10000, removeAbsentOTUs = F)
+d_rep_filt_iww <- amp_subset_samples(d_rep,
+                                     SampleContent %in% 'IWW',
+                                     minreads = 50000,removeAbsentOTUs = F)
+
+
+set.seed(22)
+# rarefy
+d_rare_as <- amp_rarefy(d_rep_filt_as, rarefy = 10000) # 10 000
+d_rare_iww <- amp_rarefy(d_rep_filt_iww, rarefy = 50000) # 50 000 
+
+d_rare_as <- readRDS('output/amp_as_rarefied.rds')
+
+dasn <- normaliseTo100(d_rare_as)
+dasn <- amp_subset_samples(dasn, removeAbsentOTUs = T)
+
+
+```
+
+
+###prepare data
+```{r}
+ASabund <- t(dasn$abund) #transpose the abundance dataframe
+
+#longitude and latitute table
+AS_geo <- dasn$metadata %>% 
+  select(`Longitude`, `Latitude`, SampleID, SampleSite, SampleDate) %>% #extract the unique geographical distances from the metadata. By including SampleID, all samples from all Plants are included
+  mutate(ID = paste(SampleID, SampleSite, SampleDate, sep = "_")) %>% 
+  unique()
+```
+
+
+match two datasets and tranform in matrices
+```{r}
+#subset SampleIDs in abund data frame (rows) found in AS_geo (they are the same for IWW and AS because IWW and AS have the same lat and long)
+ASabund2 <- ASabund[which(rownames(ASabund) %in% rownames(AS_geo)),] #Here ASabund = ASabund2
+
+#match order of mfd_geo rows acc. to mfdAS_abundASV2 rows
+AS_geo2 <- AS_geo[match(rownames(ASabund2), rownames(AS_geo)),]
+AS_geo3 <- as.matrix(AS_geo2[, 1:2]) #select only lat and long columns
+```
+
+####Bray dist
+```{r}
+#calculate distance matrix (Bray-Curtis)
+dist.bray_AS = vegdist(ASabund2, method = "bray") 
+
+#calculate geographic distance matrices
+dist.geo = distm(AS_geo3, fun = distHaversine)
+dist.geo2 = as.dist(dist.geo)
+
+#mantel test: it uses bray-curtis distance matrix and geographic distance matrix
+mantel_bc_AS  <- mantel(dist.bray_AS, dist.geo2, method = "spearman", permutations = 999, na.rm = TRUE) 
+
+```
+
+####visualize DDR
+```{r}
+#convert microbial distance matrix to data frame
+df_bc <- reshape2::melt(as.matrix(dist.bray_AS), varnames = c("Sample1", "Sample2"))
+
+#convert geo distance matrix to data frame
+dg_bc <- reshape2::melt(as.matrix(dist.geo2), varnames = c("x", "y"))
+
+names(df_bc)[names(df_bc) == "value"] <- "community"
+names(dg_bc)[names(dg_bc) == "value"] <- "geography"
+db_bc <- cbind(df_bc,dg_bc)
+
+# convert distances into km
+db_bc[,"geo_km"] <- db_bc$geography/1000
+dbs_bc <- db_bc[(db_bc$geo_km != 0),] #removes samples where the distance is 0 km (it's the auto-samples). It is important to remove them otherwise stronger relationship at smaller distances, due to the x = 0 (0 distance) and y = 1 (equal similarity).
+
+#lm R2
+##linear model 
+model_bc <- lm((1-community) ~ geo_km, dbs_bc)
+r2_bc <- format(summary(model_bc)$r.squared, digits = 2)
+coeff_bc <- model_bc$coefficients
+
+
+n <- model_bc$coefficients[2]
+
+exponent <- floor(log10(abs(n)))
+formatted_n <- sprintf("%.2f * ", n / 10^exponent)
+toPaste <- paste0('<sup>',exponent,'</sup>')
+
+df_p <- data.frame( x=225, y=0.8,label = paste0(c("*y* = ", formatted_n,'10',toPaste,
+                                                   "*x* + ",format(model_bc$coefficients[1], digits = 3)
+                                                   ,"<br>*R*\u00b2 = ",format(r2_bc, scientific = TRUE),
+                                                   "<br><br>Mantel statistic *R* = ",
+                                                   format(mantel_bc_AS$statistic, digits = 3),
+                                                   "<br>Significance = ",mantel_bc_AS$signif),collapse = ""))
+
+#plot: 
+p_AS_bray <- ggplot(data = dbs_bc , aes(x = geo_km, y = (1-community))) +
+  geom_hex(bins = 150) +
+  geom_richtext(data = df_p, aes(x=x, y=y,
+                    label = label),
+                fontface="bold",hjust = 0,
+                size = 3)+
+  scale_fill_viridis(option="F", trans = "log10", breaks = c(1,10,100,1000), limits=c(1,5000), 
+                     name = 'Count',
+                     na.value = "white") +
+  stat_smooth(method = "lm", size = 1.3, color = "black"
+              ) +
+  scale_y_continuous(breaks = seq(0,1,0.2), limits=c(0,1)) +
+  scale_x_continuous(breaks = seq(from = 0, to = 400, by = 50)) +
+  xlab("Geographical distance (km)") + 
+  ylab("Bray-Curtis similarity for ASVs") +
+  theme_bw() +
+  theme(legend.position = "right")
+
+```
+
+####Sørensen dist
+```{r}
+#calculate distance matrix (Soerensen)
+dist.sor_AS = vegdist(ASabund2, method = "bray", binary = TRUE) 
+
+#mantel test
+mantel_sor_AS  = mantel(dist.sor_AS, dist.geo2, method = "spearman", permutations = 999, na.rm = TRUE)
+
+#check results
+mantel_sor_AS
+```
+
+####visualize DDR
+```{r}
+#convert microbial distance matrix to data frame
+df_sor <- reshape2::melt(as.matrix(dist.sor_AS), varnames = c("Sample1", "Sample2"))
+
+#convert geo distance matrix to data frame
+dg_sor <- reshape2::melt(as.matrix(dist.geo2), varnames = c("x", "y"))
+
+names(df_sor)[names(df_sor) == "value"] <- "community"
+names(dg_sor)[names(dg_sor) == "value"] <- "geography"
+db_sor <- cbind(df_sor,dg_sor)
+
+
+db_sor[,"geo_km"] <- db_sor$geography/1000
+dbs_sor <- db_sor[(db_sor$geo_km != 0),]
+
+#lm R2
+##linear model
+model_sor <- lm((1-community) ~ geo_km, dbs_sor);
+r2_sor <- format(summary(model_sor)$r.squared, digits = 2)
+coeff_sor <- model_sor$coefficients
+
+
+n <- model_sor$coefficients[2]
+exponent <- floor(log10(abs(n)))
+formatted_n <- sprintf("%.2f * ", n / 10^exponent)
+
+toPaste <- paste0('<sup>',exponent,'</sup>')
+
+df_p <- data.frame( x=225, y=0.8,label = paste0(c("*y* = ", formatted_n,'10',toPaste,
+                                                   "*x* + ",format(model_sor$coefficients[1], digits = 3)
+                                                   ,"<br>*R*\u00b2 = ",format(r2_sor, scientific = TRUE),
+                                                   "<br><br>Mantel statistic *R* = ",
+                                                   format(mantel_sor_AS$statistic, digits = 3),
+                                                   "<br>Significance = ",mantel_sor_AS$signif),collapse = ""))
+
+
+p_AS_Sor <- ggplot(data = dbs_sor, aes(x = geo_km, y = (1-community))) +
+  geom_hex(bins = 150) +
+  geom_richtext(data = df_p, aes(x=x, y=y,
+                    label = label),
+                fontface="bold",hjust = 0,
+                size = 3) +
+  scale_fill_viridis(option = "F", trans = "log10", breaks = c(1,10,100,1000), limits=c(1,5000), name = 'Count',
+                     na.value = "white") +
+  stat_smooth(method = "lm", size = 1.3, color = "black") +
+  scale_y_continuous(breaks = seq(0,1,0.2), limits=c(0,1)) +
+  scale_x_continuous(breaks = seq(from = 0, to = 400, by = 50)) +
+  xlab("Geographical distance (km)") + 
+  ylab("Soerensen similarity for ASVs") +
+  theme_bw() +
+  theme(legend.position = "right")
+
+```
+
+####Combined plot all DDR
+
+```{r}
+
+p <- plot_grid(p_AS_bray + labs(tag= 'A')+ theme(plot.tag = element_text(face='bold')), 
+                      p_AS_Sor + labs(tag= 'B') + theme(plot.tag = element_text(face='bold')),
+                      ncol = 1,
+                      nrow = 2,
+                      rel_widths = c(1, 1))
+ggsave(filename = "output/Fig06_DDR_ASV_all.jpeg", height = 7, width = 7,limitsize=FALSE)
+ggsave(filename = "output/Fig06_DDR_ASV_all.pdf", height = 7, width = 7, useDingbats=FALSE, limitsize=FALSE)
+```
+
+
+
+

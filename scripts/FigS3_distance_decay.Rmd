@@ -1,0 +1,415 @@
+---
+title: 'Figure S3: Distance decay'
+author: "Sofie Zacho Vestergaard"
+date: "2024-01-08"
+output: html_document
+---
+
+
+
+```{r}
+library(ampvis2)
+library(tidyverse)
+library(patchwork)
+library(readxl)
+library(vegan)
+library(geosphere)
+library(ggtext)
+library(viridis)
+library(cowplot)
+library(data.table)
+```
+
+
+```{r}
+d <- amp_load(otutable = 'data/ASV_table_combined.tsv',
+              taxonomy = 'data/ASVs_combined_MiDAS5.2.R1.sintax',
+              metadata = 'data/metadata.xlsx',
+              pruneSingletons = T) # remove singletons
+
+# merge replicates
+d_rep <- amp_merge_replicates(d, 
+                              merge_var = "SampleID_replicates", 
+                              round = 'up')
+d_rep_filt$metadata <- d_rep_filt$metadata %>%
+  rename(SampleID = SampleID_replicates)
+
+d_rep_filt_as <- amp_subset_samples(d_rep_filt,
+                                    SampleContent %in% 'AS')
+d_rep_filt_iww <- amp_subset_samples(d_rep_filt,
+                                    SampleContent %in% 'IWW')
+
+
+set.seed(22)
+# rarefy
+d_rare_as <- amp_rarefy(d_rep_filt_as, rarefy = 10000) # 10 000
+
+d_rare_as <- readRDS('output/amp_as_rarefied.rds')
+
+#normalise
+dasn <- normaliseTo100(d_rare_as)
+dasn <- amp_subset_samples(dasn, removeAbsentOTUs = T)
+
+
+```
+
+
+
+
+
+```{r}
+#prepare data
+pregeo_V13genera <- dasn$metadata[ !is.na(dasn$metadata$Latitude), c("Longitude", "Latitude")]
+pregeo_V13genera$Longitude <- as.numeric(pregeo_V13genera$Longitude)
+pregeo_V13genera$Latitude <- as.numeric(pregeo_V13genera$Latitude)
+```
+
+```{r}
+# Prepare genus data
+#remove ASVs with no Genus classification
+ASVs_nogenus <- as.character(dasn$tax[dasn$tax$Genus == "" | is.na(dasn$tax$Genus),"OTU"])
+AS_genus <- amp_subset_taxa(dasn, tax_vector = ASVs_nogenus, remove = TRUE)
+
+gV13 <- amp_heatmap(AS_genus,
+            tax_aggregate = "Genus",
+            tax_show = 100000,
+            normalise = FALSE,
+            textmap = TRUE
+            )
+
+abund_V13genera <- t(gV13)
+```
+
+```{r}
+#subset Vxx_seq_id in abund data frame (rows) found in pregeo
+abund2_V13genera <- abund_V13genera[which(rownames(abund_V13genera) %in% rownames(pregeo_V13genera)),]
+#match order of pregeo rows acc. to uni_w_V13s2 rows
+pregeo2_V13genera <- pregeo_V13genera[match(rownames(abund2_V13genera), rownames(pregeo_V13genera)),]
+geo_V13genera <- as.matrix(pregeo2_V13genera)
+
+#calculate distance matrix (Bray-Curtis)
+dist.bray2_V13genera = vegdist(abund2_V13genera, method = "bray")
+
+#calculate geographic distance matrices
+d.geo_V13genera = distm(geo_V13genera, fun = distHaversine)
+dist.geo_V13genera = as.dist(d.geo_V13genera)
+
+#mantel test
+abund_geo_V13genera_bc  <- mantel(dist.bray2_V13genera, dist.geo_V13genera, method = "spearman", permutations = 999, na.rm = TRUE)
+
+###visualize Distance Decay Relationship
+#convert microbial distance matrix to data frame
+df_V13genera_bc <- reshape2::melt(as.matrix(dist.bray2_V13genera), varnames = c("Sample1", "Sample2"))
+
+#convert geo distance matrix to data frame
+dg_V13genera_bc <- reshape2::melt(as.matrix(dist.geo_V13genera), varnames = c("x", "y"))
+
+names(df_V13genera_bc)[names(df_V13genera_bc) == "value"] <- "community"
+names(dg_V13genera_bc)[names(dg_V13genera_bc) == "value"] <- "geography"
+db_V13genera_bc <- cbind(df_V13genera_bc,dg_V13genera_bc)
+db_V13genera_bc[,"geo_km"] <- db_V13genera_bc$geography/1000
+dbs_V13genera_bc <- db_V13genera_bc[(db_V13genera_bc$geo_km != 0),]
+#dbs_V13genera_bc[,"geo_group"] <- ifelse(dbs_V13genera_bc$geo_km>2500, 1,2)
+
+#lm R2
+model_V13genera_bc1 <- lm((1-community) ~ geo_km, dbs_V13genera_bc);
+r2_V13genera_bc1 <- format(summary(model_V13genera_bc1)$r.squared, digits = 2)
+coeff_V13genera_bc1 <- model_V13genera_bc1$coefficients
+
+
+r2_sor <- format(summary(model_V13genera_bc1)$r.squared, digits = 2)
+coeff_sor <- model_V13genera_bc1$coefficients
+n <- model_V13genera_bc1$coefficients[2]
+exponent <- floor(log10(abs(n)))
+formatted_n <- sprintf("%.2f * ", n / 10^exponent)
+
+
+toPaste <- paste0('<sup>',exponent,'</sup>')
+
+df_p <- data.frame( x=225, y=0.8,label = paste0(c("*y* = ", formatted_n,'10',toPaste,
+                                                   "  *x* + ",format(model_V13genera_bc1$coefficients[1], digits = 3)
+                                                   ,"<br>*R*\u00b2 = ",format(r2_sor, scientific = TRUE),
+                                                   "<br><br>Mantel statistic *R* = ",
+                                                   format(abund_geo_V13genera_bc$statistic, digits = 3),
+                                                   "<br>Significance = ",abund_geo_V13genera_bc$signif),collapse = ""))
+
+
+p_AS_bray_genus <- ggplot(data = dbs_V13genera_bc, aes(x = geo_km, y = (1-community))) +
+  geom_hex(bins = 150) +
+  geom_richtext(data = df_p, aes(x=x, y=y,
+                    label = label),
+                fontface="bold",hjust = 0,
+                size = 3) +
+  scale_fill_viridis(option="F", trans = "log10", breaks = c(1,10,100,1000), limits=c(1,5000),
+                     name = 'Count',
+                     na.value = "white") +
+  stat_smooth(method = "lm", size = 1.3, color = "black") +
+  scale_y_continuous(breaks = seq(0,1,0.2), limits=c(0,1)) +
+  scale_x_continuous(breaks = seq(from = 0, to = 400, by = 50)) +
+  xlab("Geographical distance (km)") + 
+  ylab("Bray-Curtis similarity for genera") +
+  theme_bw() +
+  theme(legend.position = "right")
+
+
+
+
+
+#calculate distance matrix (Soerensen)
+dist.sor_V13genera = vegdist(abund2_V13genera, method = "bray", binary = TRUE)
+
+#mantel test
+abund_geo_V13genera_s  = mantel(dist.sor_V13genera, dist.geo_V13genera, method = "spearman", permutations = 999, na.rm = TRUE)
+
+#convert microbial distance matrix to data frame
+df_V13genera_s <- melt(as.matrix(dist.sor_V13genera), varnames = c("Sample1", "Sample2"))
+
+#convert geo distance matrix to data frame
+dg_V13genera_s <- melt(as.matrix(dist.geo_V13genera), varnames = c("x", "y"))
+
+names(df_V13genera_s)[names(df_V13genera_s) == "value"] <- "community"
+names(dg_V13genera_s)[names(dg_V13genera_s) == "value"] <- "geography"
+db_V13genera_s <- cbind(df_V13genera_s,dg_V13genera_s)
+db_V13genera_s[,"geo_km"] <- db_V13genera_s$geography/1000
+dbs_V13genera_s <- db_V13genera_s[(db_V13genera_s$geo_km != 0),]
+
+#lm R2
+model_V13genera_s1 <- lm((1-community) ~ geo_km, dbs_V13genera_s);
+r2_V13genera_s1 <- format(summary(model_V13genera_s1)$r.squared, digits = 2)
+coeff_V13genera_s1 <- model_V13genera_s1$coefficients
+
+
+
+
+r2_sor <- format(summary(model_V13genera_s1)$r.squared, digits = 2)
+coeff_sor <- model_V13genera_s1$coefficients
+n <- model_V13genera_s1$coefficients[2]
+exponent <- floor(log10(abs(n)))
+formatted_n <- sprintf("%.2f * ", n / 10^exponent)
+
+
+toPaste <- paste0('<sup>',exponent,'</sup>')
+
+df_p <- data.frame( x=225, y=0.8,label = paste0(c("*y* = ", formatted_n,'10',toPaste,
+                                                   "  *x* + ",format(model_V13genera_s1$coefficients[1], digits = 3)
+                                                   ,"<br>*R*\u00b2 = ",format(r2_sor, scientific = TRUE),
+                                                   "<br><br>Mantel statistic *R* = ",
+                                                   format(abund_geo_V13genera_s$statistic, digits = 3),
+                                                   "<br>Significance = ",abund_geo_V13genera_s$signif),collapse = ""))
+
+
+p_AS_sor_genus <- ggplot(data = dbs_V13genera_s, aes(x = geo_km, y = (1-community))) +
+  geom_hex(bins = 150) +
+  geom_richtext(data = df_p, aes(x=x, y=y,
+                    label = label),
+                fontface="bold",hjust = 0,
+                size = 3) +
+  scale_fill_viridis(option="F", trans = "log10", breaks = c(1,10,100,1000), limits=c(1,5000),
+                     name = 'Count',
+                     na.value = "white") +
+  stat_smooth(method = "lm", size = 1.3, color = "black") +
+  scale_y_continuous(breaks = seq(0,1,0.2), limits=c(0,1)) +
+  scale_x_continuous(breaks = seq(from = 0, to = 400, by = 50)) +
+  xlab("Geographical distance (km)") + 
+  ylab("Sørensen similarity for genera") +
+  theme_bw() +
+  theme(legend.position = "right")
+
+```
+## combine plots
+```{r}
+
+p_genus <- plot_grid(p_AS_bray_genus + labs(tag= 'A')+ theme(plot.tag = element_text(face='bold')), 
+                      p_AS_sor_genus + theme(plot.tag = element_text(face='bold')),
+                      ncol = 1,
+                      nrow = 2,
+                      rel_widths = c(1, 1))
+
+
+```
+
+
+
+## DDR on Speices level
+
+```{r}
+# Prepare species data
+#remove ASVs with no Species classification
+ASVs_nospp <- as.character(dasn$tax[dasn$tax$Species == "" | is.na(dasn$tax$Species),"OTU"])
+AS_spp <- amp_subset_taxa(dasn, tax_vector = ASVs_nospp, remove = TRUE)
+
+gV13 <- amp_heatmap(AS_spp,
+            tax_aggregate = "Species",
+            tax_show = 10000000,
+            normalise = FALSE,
+            textmap = TRUE
+            )
+
+abund_V13species <- t(gV13)
+```
+
+```{r}
+
+#subset Vxx_seq_id in abund data frame (rows) found in pregeo
+abund2_V13species <- abund_V13species[which(rownames(abund_V13species) %in% rownames(pregeo_V13genera)),]
+#match order of pregeo rows acc. to uni_w_V13s2 rows
+pregeo2_V13species <- pregeo_V13genera[match(rownames(abund2_V13species), rownames(pregeo_V13genera)),]
+geo_V13species <- as.matrix(pregeo2_V13species)
+
+#calculate distance matrix (Bray-Curtis)
+dist.bray2_V13species = vegdist(abund2_V13species, method = "bray")
+
+#calculate geographic distance matrices
+d.geo_V13species = distm(geo_V13species, fun = distHaversine)
+dist.geo_V13species = as.dist(d.geo_V13species)
+
+#mantel test
+abund_geo_V13species_bc  <- mantel(dist.bray2_V13species, dist.geo_V13species, method = "spearman", permutations = 999, na.rm = TRUE)
+
+###visualize Distance Decay Relationship
+#convert microbial distance matrix to data frame
+df_V13species_bc <- melt(as.matrix(dist.bray2_V13species), varnames = c("Sample1", "Sample2"))
+
+#convert geo distance matrix to data frame
+dg_V13species_bc <- melt(as.matrix(dist.geo_V13species), varnames = c("x", "y"))
+
+names(df_V13species_bc)[names(df_V13species_bc) == "value"] <- "community"
+names(dg_V13species_bc)[names(dg_V13species_bc) == "value"] <- "geography"
+db_V13species_bc <- cbind(df_V13species_bc,dg_V13species_bc)
+db_V13species_bc[,"geo_km"] <- db_V13species_bc$geography/1000
+dbs_V13species_bc <- db_V13species_bc[(db_V13species_bc$geo_km != 0),]
+
+#lm R2
+model_V13species_bc1 <- lm((1-community) ~ geo_km, dbs_V13species_bc);
+r2_V13species_bc1 <- format(summary(model_V13species_bc1)$r.squared, digits = 2)
+coeff_V13species_bc1 <- model_V13species_bc1$coefficients
+
+
+
+r2_sor <- format(summary(model_V13species_bc1)$r.squared, digits = 2)
+coeff_sor <- model_V13species_bc1$coefficients
+n <- model_V13species_bc1$coefficients[2]
+exponent <- floor(log10(abs(n)))
+formatted_n <- sprintf("%.2f * ", n / 10^exponent)
+
+
+toPaste <- paste0('<sup>',exponent,'</sup>')
+
+df_p <- data.frame( x=225, y=0.8,label = paste0(c("*y* = ", formatted_n,'10',toPaste,
+                                                   "  *x* + ",format(model_V13species_bc1$coefficients[1], digits = 3)
+                                                   ,"<br>*R*\u00b2 = ",format(r2_sor, scientific = TRUE),
+                                                   "<br><br>Mantel statistic *R* = ",
+                                                   format(abund_geo_V13species_bc$statistic, digits = 3),
+                                                   "<br>Significance = ",abund_geo_V13species_bc$signif),collapse = ""))
+
+
+p_AS_bray_species <- ggplot(data = dbs_V13species_bc, aes(x = geo_km, y = (1-community))) +
+  geom_hex(bins = 150) +
+  geom_richtext(data = df_p, aes(x=x, y=y,
+                    label = label),
+                fontface="bold",hjust = 0,
+                size = 3) +
+  scale_fill_viridis(option="F", trans = "log10", breaks = c(1,10,100,1000), limits=c(1,5000),
+                     name = 'Count',
+                     na.value = "white") +
+  stat_smooth(method = "lm", size = 1.3, color = "black") +
+  scale_y_continuous(breaks = seq(0,1,0.2), limits=c(0,1)) +
+  scale_x_continuous(breaks = seq(from = 0, to = 400, by = 50)) +
+  xlab("Geographical distance (km)") + 
+  ylab("Bray-Curtis similarity for species") +
+  theme_bw() +
+  theme(legend.position = "right")
+
+
+
+
+
+
+#calculate distance matrix (Soerensen)
+dist.sor_V13species = vegdist(abund2_V13species, method = "bray", binary = TRUE)
+
+#mantel test
+abund_geo_V13species_s  = mantel(dist.sor_V13species, dist.geo_V13species, method = "spearman", permutations = 999, na.rm = TRUE)
+
+#convert microbial distance matrix to data frame
+df_V13species_s <- melt(as.matrix(dist.sor_V13species), varnames = c("Sample1", "Sample2"))
+
+#convert geo distance matrix to data frame
+dg_V13species_s <- melt(as.matrix(dist.geo_V13species), varnames = c("x", "y"))
+
+names(df_V13species_s)[names(df_V13species_s) == "value"] <- "community"
+names(dg_V13species_s)[names(dg_V13species_s) == "value"] <- "geography"
+db_V13species_s <- cbind(df_V13species_s,dg_V13species_s)
+db_V13species_s[,"geo_km"] <- db_V13species_s$geography/1000
+dbs_V13species_s <- db_V13species_s[(db_V13species_s$geo_km != 0),]
+
+#lm R2
+model_V13species_s1 <- lm((1-community) ~ geo_km, dbs_V13species_s);
+r2_V13species_s1 <- format(summary(model_V13species_s1)$r.squared, digits = 2)
+coeff_V13species_s1 <- model_V13species_s1$coefficients
+
+
+
+r2_sor <- format(summary(model_V13species_s1)$r.squared, digits = 2)
+coeff_sor <- model_V13species_s1$coefficients
+n <- model_V13species_s1$coefficients[2]
+exponent <- floor(log10(abs(n)))
+formatted_n <- sprintf("%.2f * ", n / 10^exponent)
+
+
+toPaste <- paste0('<sup>',exponent,'</sup>')
+
+df_p <- data.frame( x=225, y=0.8,label = paste0(c("*y* = ", formatted_n,'10',toPaste,
+                                                   "  *x* + ",format(model_V13species_s1$coefficients[1], digits = 3)
+                                                   ,"<br>*R*\u00b2 = ",format(r2_sor, scientific = TRUE),
+                                                   "<br><br>Mantel statistic *R* = ",
+                                                   format(abund_geo_V13species_s$statistic, digits = 3),
+                                                   "<br>Significance = ",abund_geo_V13species_s$signif),collapse = ""))
+
+
+p_AS_sor_species <- ggplot(data = dbs_V13species_s, aes(x = geo_km, y = (1-community))) +
+  geom_hex(bins = 150) +
+  geom_richtext(data = df_p, aes(x=x, y=y,
+                    label = label),
+                fontface="bold",hjust = 0,
+                size = 3) +
+  scale_fill_viridis(option="F", trans = "log10", breaks = c(1,10,100,1000), limits=c(1,5000),
+                     name = 'Count',
+                     na.value = "white") +
+  stat_smooth(method = "lm", size = 1.3, color = "black") +
+  scale_y_continuous(breaks = seq(0,1,0.2), limits=c(0,1)) +
+  scale_x_continuous(breaks = seq(from = 0, to = 400, by = 50)) +
+  xlab("Geographical distance (km)") + 
+  ylab("Sørensen similarity for species") +
+  theme_bw() +
+  theme(legend.position = "right")
+
+```
+## combine plots
+```{r}
+
+p_species <- plot_grid(p_AS_bray_species + labs(tag= 'B')+ theme(plot.tag = element_text(face='bold')), 
+                      p_AS_sor_species + theme(plot.tag = element_text(face='bold')),
+                      ncol = 1,
+                      nrow = 2,
+                      rel_widths = c(1, 1))
+
+
+
+p <- p_genus + p_species
+
+
+ggsave(p,filename = "output/FigS3_DDR-ASall_Bray&Sor_gen_spp.jpeg", height = 7, width = 12.5)
+ggsave(p,filename = "output/FigS3_DDR-ASall_Bray&Sor_gen_spp.pdf", height = 7, width = 12.5,
+      useDingbats=FALSE, limitsize=FALSE)
+
+
+```
+
+
+
+
+
+
+
+

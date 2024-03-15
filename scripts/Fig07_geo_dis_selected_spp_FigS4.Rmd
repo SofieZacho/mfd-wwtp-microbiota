@@ -1,0 +1,305 @@
+---
+title: 'Figure 7 + Figure S4: Geographical distribution'
+author: "Sofie Zacho Vestergaard"
+date: "2024-01-04"
+output: html_document
+---
+
+
+```{r}
+library(ampvis2)
+library(tidyverse)
+library(patchwork)
+library(mapDK)
+library(cowplot)
+library(ggrepel)
+```
+
+
+
+```{r}
+d <- amp_load(otutable = 'data/ASV_table_combined.tsv',
+              taxonomy = 'data/ASVs_combined_MiDAS5.2.R1.sintax',
+              metadata = 'data/metadata.xlsx',
+              pruneSingletons = T) # remove singletons
+
+# merge replicates
+d_rep <- amp_merge_replicates(d, 
+                              merge_var = "SampleID_replicates", 
+                              round = 'up')
+d_rep_filt$metadata <- d_rep_filt$metadata %>%
+  rename(SampleID = SampleID_replicates)
+
+d_rep_filt_as <- amp_subset_samples(d_rep_filt,
+                                    SampleContent %in% 'AS')
+d_rep_filt_iww <- amp_subset_samples(d_rep_filt,
+                                    SampleContent %in% 'IWW')
+
+
+
+# rarefy
+d_rare_as <- amp_rarefy(d_rep_filt_as, rarefy = 10000) # 10 000
+d_rare_iww <- amp_rarefy(d_rep_filt_iww, rarefy = 100000) # 100 000 
+
+d_rare_as <- readRDS('output/amp_as_rarefied.rds')
+d_rare_iww <- readRDS('output/amp_iww_rarefied.rds')
+
+#normalise
+
+dasn <- normaliseTo100(d_rare_as)
+diwwn <- normaliseTo100(d_rare_iww)
+
+dasn <- amp_subset_samples(dasn, removeAbsentOTUs = T)
+diwwn <- amp_subset_samples(diwwn, removeAbsentOTUs = T)
+
+```
+
+
+
+```{r}
+tax_vector_spp <- c('s__Ca_Amarolinea_dominans','s__Ca_Microthrix_parvicella','s__midas_s_452')
+as_select <- amp_subset_taxa(dasn, tax_vector = tax_vector_spp)
+
+heat_as_spp <- amp_heatmap(as_select,
+                           group_by = 'SampleSite',
+                           tax_aggregate = 'Species',
+                           tax_add = 'Genus',
+                           textmap = T,
+                           normalise = F)
+all_plot <- dasn$metadata %>% select(SampleSite, Region, Latitude, 
+                                    Longitude, Design, PEdesign, `IndustrialLoad[%]`,Project ) %>% 
+  unique() 
+
+
+heat_as_spp_t <- data.frame(t(heat_as_spp))
+heat_as_spp_t$SampleSite <- rownames(heat_as_spp_t)
+heat_as_spp_t <- left_join(heat_as_spp_t, all_plot, by = 'SampleSite')
+
+leg <- heat_as_spp_t # for later for legend extraction
+m <- mapDK(detail = 'region', 
+           map.fill = '#f1ead7',
+           map.colour = 'black')
+
+#alpha_value <- 0.8  # Set your desired alpha value
+# Access the first layer and update the alpha in aes_params
+#m$layers[[1]]$aes_params$alpha <- alpha_value
+m[["layers"]][[1]][["geom"]][["default_aes"]][["linewidth"]] <- 0.2
+
+
+cols <- c('white','#f4cccc','#ea9999','darkred')
+
+
+map_func <- function(x) {
+  m + geom_point(data = heat_as_spp_t,
+                 aes(x=Longitude,
+                     y=Latitude,
+                     fill = get(x),
+                     group = get(x)), 
+                 size=2.6,
+                 stroke = 0.8,
+                 shape = 21,
+                 alpha = 1,
+                 colour = 'black' ) +
+    xlim(8,12.8) +
+    scale_fill_binned(breaks = c(0,0.001,0.1, 1),
+                      na.value = 'white',
+                      guide = guide_coloursteps(frame.color = 'black'),
+                      palette = ggplot2:::binned_pal(scales::manual_pal(values = cols)))+
+    theme(legend.position = 'none',
+          title = element_text(size = 10),
+          legend.title = element_blank(),
+          legend.text = element_text(size = 3, angle = 90),
+          legend.key.size = unit(0.3, 'cm'), #0.2
+          legend.justification="center",
+          legend.margin=margin(0,0,0,0),
+          legend.box.margin=margin(-10,-10,-10,-10)
+    ) 
+  #+
+    # geom_text_repel(data = heat_as_spp_t,
+    #              aes(x=Longitude,
+    #                  y=Latitude,
+    #                  label = round(get(x),4),
+    #                  group = get(x)))
+}
+
+ama <- map_func('Ca_Amarolinea..Ca_Amarolinea_dominans') + 
+  labs(title = expression(italic("Ca.")~"Amarolinea dominans"))+
+  theme(plot.title = element_text(hjust = 0.5, size = 14))
+
+micro <- map_func('Ca_Microthrix..Ca_Microthrix_parvicella') + 
+  labs(title = expression(italic("Ca.")~"Microthrix parvicella")) +
+  theme(plot.title = element_text(hjust = 0.5, size = 14))
+
+epi <- map_func('Ca_Epiflobacter..midas_s_452') + 
+  labs(title = 'Activated sludge')+
+  theme(plot.title = element_text(hjust = 0.5, size = 14))
+
+
+
+```
+
+
+```{r}
+#### Epiflobacter
+
+tax_vector_spp <- c('s__midas_s_452')
+epi_select <- amp_subset_taxa(diwwn, tax_vector = tax_vector_spp)
+
+heat_as_spp <- amp_heatmap(epi_select,
+                           group_by = 'SampleSite',
+                           tax_aggregate = 'Species',
+                           tax_add = 'Genus',
+                           textmap = T,
+                           normalise = F)
+
+heat_as_spp_t <- data.frame(t(heat_as_spp))
+heat_as_spp_t$SampleSite <- rownames(heat_as_spp_t)
+heat_as_spp_t <- left_join(heat_as_spp_t, all_plot, by = 'SampleSite')
+
+leg_iww <- heat_as_spp_t
+
+colors <- c('white','#ea9999','darkred')
+
+iww_map_func <- function(x) {
+  m + geom_point(data = heat_as_spp_t,
+                 aes(x=Longitude,
+                     y=Latitude,
+                     fill = get(x),
+                     group = get(x)), 
+                 size=2.6,
+                 stroke = 0.8,
+                 shape = 21,
+                 alpha = 1,
+                 colour = 'black' ) +
+    xlim(8,12.8) +
+    scale_fill_binned(breaks = c(0,0.001, 0.01),
+                      na.value = 'white',
+                      guide = guide_coloursteps(frame.color = 'black'),
+                      palette = ggplot2:::binned_pal(scales::manual_pal(values = colors)))+
+    labs(title = paste0(x)) +
+    theme(legend.position = 'none',
+          title = element_text(size = 10),
+          legend.title = element_blank(),
+          legend.text = element_text(size = 3, angle = 90),
+          legend.key.size = unit(0.3, 'cm'), #0.2
+          legend.justification="center",
+          legend.margin=margin(0,0,0,0),
+          legend.box.margin=margin(-10,-10,-10,-10)
+    )
+  # +
+  #   geom_text_repel(data = heat_as_spp_t,
+  #                aes(x=Longitude,
+  #                    y=Latitude,
+  #                    label = round(get(x),5),
+  #                    group = get(x)))
+  
+}
+
+epi_iww <- iww_map_func('Ca_Epiflobacter..midas_s_452')+ 
+  labs(title = "Influent") +
+  theme(plot.title = element_text(hjust = 0.5, size = 14))
+
+
+```
+
+```{r}
+
+# Create the bins and corresponding colors
+bins <- c(0,0.001, 0.1, 1, Inf)
+colors <- c('white','#f4cccc','#ea9999','darkred')
+
+# Categorize the data into bins
+leg$bin <- cut(leg$Ca_Amarolinea..Ca_Amarolinea_dominans, breaks = bins, labels = FALSE, right = FALSE)
+
+
+plot <- ggplot(leg, aes(x = SampleSite, y = Ca_Microthrix..Ca_Microthrix_parvicella, fill = as.factor(bin))) +
+  geom_point(shape = 21)  +
+  scale_fill_manual(values = colors, 
+                    breaks = c(1,2,3,4), 
+                    labels = c("<0.001%","0.001-0.1%", "0.1-1%", ">1%"),
+                    name = 'Relative abundance') + 
+  guides(fill = guide_legend(reverse = TRUE,
+                            override.aes = list(color = "black", size = 2),
+                            nrow = 2
+                             )
+         ) +
+  theme(legend.position = 'bottom',
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 8, face = 'bold'),
+        legend.margin = margin(unit(0, "cm")),
+        legend.key.size = unit(0.3, "cm"))
+
+# Extract the legend from the existing plot
+legend <- get_legend(plot) 
+legend_vertical <- get_legend(plot + theme(legend.position = 'right',
+                                           legend.text = element_text(size = 10),
+        legend.title = element_text(size = 10, face = 'bold'),
+        legend.margin = margin(unit(0, "cm")),
+        legend.key.size = unit(0.6, "cm"))+
+                                guides(fill = guide_legend(reverse = TRUE,
+                            override.aes = list(color = "black", size = 3),
+                            ncol =1 
+                             )))
+
+
+## legend iww
+# Create the bins and corresponding colors
+bins_iww <- c(0, 0.001, 0.01, Inf)
+colors <- c('white','#ea9999','darkred')
+
+# Categorize the data into bins
+leg_iww$bins_iww <- cut(leg_iww$Ca_Epiflobacter..midas_s_452, breaks = bins_iww, labels = FALSE, right = FALSE)
+
+
+plot_iww <- ggplot(leg_iww, aes(x = SampleSite, y = Ca_Epiflobacter..midas_s_452, fill = as.factor(bins_iww))) +
+  geom_point(shape = 21)  +
+  scale_fill_manual(values = colors, 
+                    breaks = c(1,2,3), 
+                    labels = c("<0.001%", "0.001-0.01%", ">0.01%"),
+                    name = 'Relative abundance') + 
+  guides(fill = guide_legend(reverse = TRUE,
+                            override.aes = list(color = "black", size = 2),
+                            nrow = 2
+                             )
+         ) +
+  theme(legend.position = 'bottom',
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 8, face = 'bold'),
+        legend.margin = margin(unit(0, "cm")),
+        legend.key.size = unit(0.3, "cm"))
+
+# Extract the legend from the existing plot
+legend_iww <- get_legend(plot_iww)
+
+```
+
+
+## export plots
+```{r}
+
+p_epi_iww <- epi_iww + inset_element(legend_iww, left = 0.5,bottom = 0.0, right = 0.5, top = 0.01)
+
+p_epi_as <- epi + inset_element(legend, left = 0.5,bottom = 0.0, right = 0.5, top = 0.01)
+
+
+epi_plot <- p_epi_as + p_epi_iww
+ggsave(filename = "output/Fig07_epi.png",
+         epi_plot,
+         width = 8, height = 4)
+ggsave(filename = "output/Fig07_epi.pdf", epi_plot,
+         width = 8, height = 4, useDingbats=FALSE, limitsize=FALSE)
+
+
+sup <- ama + micro + legend_vertical + plot_layout(widths  = c(0.45, 0.45,0.15))
+ggsave(filename = "output/Fig07_supplementary.png",
+         sup,
+         width = 8, height = 4)
+ggsave(filename = "output/Fig07_supplementary.pdf",
+         sup,
+         width = 8, height = 4, useDingbats=FALSE, limitsize=FALSE)
+
+```
+
+
+
+

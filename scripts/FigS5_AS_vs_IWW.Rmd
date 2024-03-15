@@ -1,0 +1,202 @@
+---
+title: 'Figure S5: AS vs IWW'
+author: "Sofie Zacho Vestergaard"
+date: "2024-01-05"
+output: html_document
+---
+
+```{r}
+library(ampvis2)
+library(tidyverse)
+library(vegan)
+```
+
+
+```{r}
+d <- amp_load(otutable = 'data/ASV_table_combined.tsv',
+              taxonomy = 'data/ASVs_combined_MiDAS5.2.R1.sintax',
+              metadata = 'data/metadata.xlsx',
+              pruneSingletons = T) # remove singletons
+
+# merge replicates
+d_rep <- amp_merge_replicates(d, 
+                              merge_var = "SampleID_replicates", 
+                              round = 'up')
+
+d_rep$metadata <- d_rep$metadata %>%
+  rename(SampleID = SampleID_replicates)
+
+d_rep_filt_as <- amp_subset_samples(d_rep,
+                                    SampleContent %in% 'AS',
+                                    minreads = 10000, removeAbsentOTUs = F)
+d_rep_filt_iww <- amp_subset_samples(d_rep,
+                                     SampleContent %in% 'IWW',
+                                     minreads = 50000,removeAbsentOTUs = F)
+
+
+set.seed(22)
+# rarefy
+d_rare_as <- amp_rarefy(d_rep_filt_as, rarefy = 10000) # 10 000
+d_rare_iww <- amp_rarefy(d_rep_filt_iww, rarefy = 50000) # 50 000 
+
+#combine AS and IWW
+d_tot <- amp_merge_ampvis2(d_rare_as,
+                           d_rare_iww,
+                           by_refseq = F)
+
+d_tot <- readRDS('output/amp_rarefied.rds')
+
+#normalise
+dn <- normaliseTo100(d_tot)
+dn <- amp_subset_samples(dn, removeAbsentOTUs = T)
+```
+
+
+##Transpose
+```{r}
+# combine data for AS and IWW
+abund <- t(dn$abund)
+
+```
+
+##Calc Dist
+
+```{r, calc dist matrix}
+#dist_bray <- vegdist(abund, method="bray", binary=FALSE, diag=FALSE, upper=FALSE, na.rm = FALSE) 
+dist_jacc <- vegdist(abund, method="jaccard", binary=TRUE, diag=FALSE, upper=FALSE, na.rm = FALSE) 
+```
+
+```{r, prepare df}
+#convert UniFrac distance matrix to data frame
+df <- reshape2::melt(as.matrix(dist_jacc), varnames = c("ID.x", "ID.y"))
+df$ID.x <- as.character(df$ID.x)
+df$ID.y <- as.character(df$ID.y)
+#bind Plant names to Sample names
+metalab <- unique(dn$meta[,c("SampleID", "SampleSite", "SampleContent")])
+dfb <- merge.data.frame(df, metalab, by.x ="ID.x", by.y = "SampleID", all.x = TRUE)
+dfm <- merge.data.frame(dfb, metalab, by.x ="ID.y", by.y = "SampleID", all.x = TRUE)
+```
+
+```{r}
+dfm4 <- dfm
+
+#pair IWW/AS samples from same plant
+dfm4$tag[dfm4$SampleSite.x == dfm4$SampleSite.y &
+          dfm4$SampleContent.x != dfm4$SampleContent.y] <- "IWW/AS Same plant"
+
+#pair IWW/AS samples from different plant
+dfm4$tag[dfm4$SampleSite.x != dfm4$SampleSite.y &
+          dfm4$SampleContent.x != dfm4$SampleContent.y] <- "IWW/AS Different plants"
+
+#pair IWW/AS samples from same sample type but different plant
+dfm4$tag[dfm4$SampleSite.x != dfm4$SampleSite.y &
+          dfm4$SampleContent.x == dfm4$SampleContent.y] <- "AS/AS and IWW/IWW Different plants"
+
+#same samples
+dfm4$tag[dfm4$SampleSite.x == dfm4$SampleSite.y & 
+                dfm4$SampleContent.x == dfm4$SampleContent.y ] <- "same samples"
+
+#check comparisons left out
+which(is.na(dfm4$tag))
+
+
+#filter out unwanted samples
+dfm5 <- subset(dfm4, !tag %in% c("same samples", "AS/AS and IWW/IWW Different plants"))
+
+
+```
+
+1 - jaccard dissimilarity = similarity
+```{r}
+dfm5$value_sim <- 1 - dfm5$value
+
+```
+
+```{r}
+subx2 <- dfm5 %>% 
+  select(SampleSite.x, tag, value_sim) %>% #in this way remove duplicated comparisons, 
+  unique()
+
+```
+
+```{r}
+###test4: sort by highest difference between medians (for IWA WWCE talk)
+df_median <- subx2 %>% 
+  group_by(SampleSite.x, tag) %>% 
+  dplyr::summarise(value_sim = median(value_sim))
+
+# Get the duplicated rows' content in the specified column
+dup_values <- df_median$SampleSite.x[duplicated(df_median$SampleSite.x)]
+
+df_median <- df_median %>% 
+  filter(SampleSite.x %in% dup_values)
+
+sortPlants <- df_median %>% 
+  spread(., tag, value_sim) %>% 
+  summarise(Diff_median = `IWW/AS Same plant` - `IWW/AS Different plants`) %>% 
+  arrange(desc(Diff_median)) %>% 
+  pull(SampleSite.x)
+
+subx3 <- subx2 %>% 
+  filter(SampleSite.x %in% dup_values) # remove plants with comparisons only to itself
+subx3$SampleSite.x <- factor(subx3$SampleSite.x, levels = sortPlants)
+
+p_jacc <-ggplot(subx3, aes(x=SampleSite.x, y=value_sim, 
+                         fill = tag
+                        )) + 
+  geom_boxplot(alpha = 0.5,
+               outlier.size = 0.3,
+               outlier.alpha = 0.2) +
+  theme_bw() +
+   theme(
+    axis.text.y = element_text(size = 8, colour = "grey30", face = "plain"),
+        axis.text.x = element_text(angle = 90, colour = "black", size = 8, hjust = 1, vjust = 0.5),
+        axis.title.y = element_text(size = 12),
+        axis.title.x = element_blank(), 
+        legend.position = "top", 
+        legend.title = element_blank(),
+    legend.text = element_text(size = 12, face = 'bold')
+        ) + 
+   ylab("Jaccard similarity") +
+  ggpubr::geom_pwc(label = 'p.adj.signif',
+                   hide.ns = T,
+                   angle = 90, vjust = 0.75,
+                   p.adjust.method = "bonferroni",
+                   group.by = "x.var",p.adjust.by = "panel",
+                   remove.bracket = T)+
+  geom_line(data = subset(df_median, tag %in% "IWW/AS Same plant"),
+             mapping = aes(x = SampleSite.x, y = value_sim, group= tag),
+            stat = "identity",
+             color="#00BFC4",  linewidth = 1) +
+  geom_line(data = subset(df_median, tag %in% "IWW/AS Different plants"),
+             mapping = aes(x = SampleSite.x, y = value_sim, group= tag),
+             color="#F8766D", linewidth = 1,
+            stat = "identity") +
+  scale_y_continuous(limits = c(0, 0.26),
+                      expand = c(0,0,0,0.025)
+                      ) 
+
+
+
+# save plots
+ggsave(p_jacc,
+       filename = "output/FigS5_IWW_AS_comparison_jaccard.png",
+       height = 4.5,
+       width = 8)
+
+ggsave(p_jacc,
+       filename = "output/FigS5_IWW_AS_comparison_jaccard.pdf",
+       height = 4.5,
+       width = 8, useDingbats=FALSE, limitsize=FALSE)
+
+
+# check right values
+comparison <- ggpubr::compare_means(
+  value_sim ~ tag, data = subx3, 
+  group.by = "SampleSite.x", method = "wilcox.test", p.adjust.method = "bonferroni"
+  )
+
+
+```
+
+

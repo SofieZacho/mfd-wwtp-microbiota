@@ -1,0 +1,750 @@
+---
+title: 'Figure 2: Core analysis'
+author: "Sofie Zacho Vestergaard"
+date: "2024-01-03"
+output: html_document
+---
+
+```{r}
+library(ampvis2)
+library(tidyverse)
+library(data.table)
+library(patchwork)
+library(viridis)
+```
+
+# load data
+```{r}
+d <- amp_load(otutable = 'data/ASV_table_combined.tsv',
+              taxonomy = 'data/ASVs_combined_MiDAS5.2.R1.sintax',
+              metadata = 'data/metadata.xlsx',
+              pruneSingletons = T) # remove singletons
+
+# merge replicates
+d_rep <- amp_merge_replicates(d, 
+                              merge_var = "SampleID_replicates", 
+                              round = 'up')
+
+d_rep$metadata <- d_rep$metadata %>%
+  rename(SampleID = SampleID_replicates)
+
+d_rep_filt_as <- amp_subset_samples(d_rep,
+                                    SampleContent %in% 'AS',
+                                    minreads = 10000, removeAbsentOTUs = F)
+
+set.seed(22) # set seed to make rarefaction reproducible
+# rarefy
+d_rare_as <- amp_rarefy(d_rep_filt_as, rarefy = 10000) # 10 000
+
+#normalise
+dasn <- normaliseTo100(d_rare_as)
+```
+
+
+##1)ASV
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+#Create taxonomy data frame (for later)
+tax <- dasn$tax[1:7]
+tax$Kingdom <- gsub("k__","",tax$Kingdom)
+tax$Phylum <- gsub("p__","",tax$Phylum)
+tax$Class <- gsub("c__","",tax$Class)
+tax$Order <- gsub("o__","",tax$Order)
+tax$Family <- gsub("f__","",tax$Family)
+tax$Genus <- gsub("g__","",tax$Genus)
+tax$Species <- gsub("s__","",tax$Species)
+tax$OTU <- rownames(tax)
+tax <- distinct(tax)
+
+dlong <- amp_export_long(
+    dasn,
+    metadata_vars = "SampleSite", #data are aggregated at plant level 
+    tax_levels = c("OTU"))
+```
+
+###CORE
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#group up and summarise for core taxa
+  core <- dlong[, .(sum = sum(count)), by = c("OTU", "SampleSite")]   
+  data.table::setorderv(core, c("SampleSite", "sum"), order = -1)
+  #calculate proportion % abundance of each ASV
+  core[, Speciesprop := sum / sum(sum) * 100, by = "SampleSite"]
+  #calculate how many times given ASV is observed in plants (>0)
+  core <- core[OTU!=""] #remove rows where no species (unclassified ASVs)
+  core[, nObs := sum(sum > 0), by = OTU]
+  #calculate how many times (in how many plants) ASV is >0.1% abundant
+  core[, nCore := sum(Speciesprop > 0.1), by = OTU]
+  #add column with sum of all the reads
+  core[, totalReads := sum(sum)]
+    core_summary <- core[
+    , 
+    .(nSpecies = uniqueN(OTU)),
+    by = .(nObs, nCore)]
+
+```
+
+
+```{r}
+###Retrive core data
+#subset ASVs present in the core
+core_loose <- core[(core$nCore >= n_distinct(core$SampleSite)*0.2),] %>% #loose core (20% plants)
+	group_by(OTU) %>%
+	summarise(mean_abu = mean(Speciesprop)) %>%
+           arrange(desc(mean_abu))
+core_loose <- core_loose[ core_loose$OTU != "", ]
+core_loose$OTU <- gsub("s__","",core_loose$OTU)
+core_loose[,"V1V3"] <- 2
+core_loose[,"Category"] <- "loose core"
+
+core_general <- core[(core$nCore >= n_distinct(core$SampleSite)*0.5),] %>% #general core (50% plants)
+	group_by(OTU) %>%
+	summarise(mean_abu = mean(Speciesprop)) %>%
+           arrange(desc(mean_abu))
+core_general <- core_general[ core_general$OTU != "", ]
+core_general$OTU <- gsub("s__","",core_general$OTU)
+core_general[,"V1V3"] <- 3
+core_general[,"Category"] <- "general core"
+
+core_strict <- core[(core$nCore >= n_distinct(core$SampleSite)*0.8),] %>% #strict core (80% plants)
+	group_by(OTU) %>%
+	summarise(mean_abu = mean(Speciesprop)) %>%
+           arrange(desc(mean_abu))
+core_strict <- core_strict[ core_strict$OTU != "", ]
+core_strict$OTU <- gsub("s__","",core_strict$OTU)
+core_strict[,"V1V3"] <- 4
+core_strict[,"Category"] <- "strict core"
+```
+
+###CRAT
+
+
+
+```{r}
+### Plot for conditional abundant genera
+  
+#group up and summarise for conditional abundant taxa (CAT)
+crat <- dlong[, .(sum = sum(count)), by = c("OTU", "SampleSite")]   
+  setorderv(core, c("SampleSite", "sum"), order = -1)
+  #calculate proportion % abundance of each ASV
+  crat[, Speciesprop := sum / sum(sum) * 100, by = "SampleSite"]
+  #calculate how many times given ASV is observed in plants (>0)
+  crat <- crat[OTU!=""]
+
+
+ crat <- crat[!OTU %in% c(core_loose$OTU, core_general$OTU, core_strict$OTU)] # Remove core ASVs 
+ 
+  crat[, nObs := sum(sum > 0), by = OTU]
+  #calculate how many times (in how many plants) ASV is >1% abundant
+  crat[, nCA := sum(Speciesprop > 1), by = OTU]
+  #add column with sum of all the reads
+  crat[, totalReads := sum(sum)]
+    crat_summary <- crat[,.(nSpecies = uniqueN(OTU)), by = .(nObs, nCA)]
+    
+```
+
+
+
+
+```{r}
+###Retrive CRAT data
+#subset ASVs present in the core
+core_crat <- crat[(crat$nCA >= 1)] %>%
+	group_by(OTU) %>%
+	summarise(mean_abu = mean(Speciesprop)) %>%
+           arrange(desc(mean_abu))
+core_crat <- core_crat[ core_crat$OTU != "", ]
+core_crat[,"V1V3"] <- 1
+core_crat[,"Category"] <- "CRAT"
+```
+
+###combine core&crat data
+```{r}
+#Merge core data for v13
+core_loose <- filter(core_loose, !(OTU %in% core_general$OTU)) #loose core (>20%) should not include general core (>50%)
+core_general <- filter(core_general, !(OTU %in% core_strict$OTU))#general core (>50%) should not include strict core (>80%)
+
+core2 <- rbind(core_strict[, c(1,4)], core_general[, c(1,4)]) %>%
+  rbind(., core_loose[, c(1,4)]) %>%
+  rbind(., core_crat[, c(1,4)]) %>%
+  merge(., tax[,c("Genus", "Species", "OTU")], by="OTU", all.x=TRUE)
+```
+
+###Stats
+```{r}
+#nr of ASVs in each categories
+core2 %>% 
+  group_by(Category) %>% 
+  distinct(OTU, .keep_all = T) %>% 
+  count()
+
+#check if by accident some ASVs have been countend twice. It should return empty
+core2 %>% 
+  filter(duplicated(core2$OTU) == T) %>% 
+  arrange(OTU, Category) %>% 
+  View()
+
+```
+
+###export list core-crat
+```{r}
+openxlsx::write.xlsx(core2,'output/core&crat_ASV.xlsx', rowNames = F)
+```
+
+##2)Genus
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+dlong_gen <- amp_export_long(
+    dasn,
+    metadata_vars = "SampleSite", 
+    tax_levels = c("Genus"))
+```
+
+###CORE
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#group up and summarise for core taxa
+  core_gen <- dlong_gen[, .(sum = sum(count)), by = c("Genus", "SampleSite")]   
+  data.table::setorderv(core_gen, c("SampleSite", "sum"), order = -1)
+  #calculate proportion % abundance of each ASV
+  core_gen[, GenusProp := sum / sum(sum) * 100, by = "SampleSite"]
+  #calculate how many times given ASV is observed in plants (>0)
+  core_gen <- core_gen[Genus!=""] #remove rows where no species (unclassified ASVs)
+  core_gen[, nObs := sum(sum > 0), by = Genus]
+  #calculate how many times (in how many plants) ASV is >0.1% abundant
+  core_gen[, nCore := sum(GenusProp > 0.1), by = Genus]
+  #add column with sum of all the reads
+  core_gen[, totalReads := sum(sum)]
+    core_gen_summary <- core_gen[
+    , 
+    .(nGenus = uniqueN(Genus)),
+    by = .(nObs, nCore)]
+
+```
+
+
+
+```{r}
+###Retrive core data
+#subset ASVs present in the core
+core_gen_loose <- core_gen[(core_gen$nCore >= n_distinct(core_gen$SampleSite)*0.2),] %>% #loose core (20% plants)
+	group_by(Genus) %>%
+	summarise(mean_abu = mean(GenusProp)) %>%
+           arrange(desc(mean_abu))
+core_gen_loose <- core_gen_loose[ core_gen_loose$Genus != "", ]
+core_gen_loose$Genus <- gsub("g__","",core_gen_loose$Genus)
+core_gen_loose[,"V1V3"] <- 2
+core_gen_loose[,"Category"] <- "loose core"
+
+core_gen_general <- core_gen[(core_gen$nCore >= n_distinct(core_gen$SampleSite)*0.5),] %>% #general core (50% plants)
+	group_by(Genus) %>%
+	summarise(mean_abu = mean(GenusProp)) %>%
+           arrange(desc(mean_abu))
+core_gen_general <- core_gen_general[ core_gen_general$Genus != "", ]
+core_gen_general$Genus <- gsub("g__","",core_gen_general$Genus)
+core_gen_general[,"V1V3"] <- 3
+core_gen_general[,"Category"] <- "general core"
+
+core_gen_strict <- core_gen[(core_gen$nCore >= n_distinct(core_gen$SampleSite)*0.8),] %>% #strict core (80% plants)
+	group_by(Genus) %>%
+	summarise(mean_abu = mean(GenusProp)) %>%
+           arrange(desc(mean_abu))
+core_gen_strict <- core_gen_strict[ core_gen_strict$Genus != "", ]
+core_gen_strict$Genus <- gsub("g__","",core_gen_strict$Genus)
+core_gen_strict[,"V1V3"] <- 4
+core_gen_strict[,"Category"] <- "strict core"
+```
+
+
+###CRAT
+
+```{r}
+#group up and summarise for conditional abundant taxa (CAT)
+crat_gen <- dlong_gen[, .(sum = sum(count)), by = c("Genus", "SampleSite")]   
+  setorderv(core_gen, c("SampleSite", "sum"), order = -1)
+  #calculate proportion % abundance of each ASV
+  crat_gen[, GenusProp := sum / sum(sum) * 100, by = "SampleSite"]
+  #calculate how many times given ASV is observed in plants (>0)
+  crat_gen <- crat_gen[Genus!=""]
+
+  crat_gen$Genus <- gsub("g__","",crat_gen$Genus)#remove genus string so that the following filtering can work
+  
+ crat_gen <- crat_gen[!Genus %in% c(core_gen_loose$Genus, core_gen_general$Genus, core_gen_strict$Genus)] # Remove core ASVs 
+ 
+  
+  crat_gen[, nObs := sum(sum > 0), by = Genus]
+  #calculate how many times (in how many plants) ASV is >1% abundant
+  crat_gen[, nCA := sum(GenusProp > 1), by = Genus]
+  #add column with sum of all the reads
+  crat_gen[, totalReads := sum(sum)]
+  crat_gen_summary <- crat_gen[,.(nGenus = uniqueN(Genus)), by = .(nObs, nCA)]
+```
+
+
+
+```{r}
+###Retrive CRAT data
+#subset Genera present in the core
+core_crat_gen <- crat_gen[(crat_gen$nCA >= 1)] %>%
+	group_by(Genus) %>%
+	summarise(mean_abu = mean(GenusProp)) %>%
+           arrange(desc(mean_abu))
+core_crat_gen <- core_crat_gen[ core_crat_gen$Genus != "", ]
+core_crat_gen[,"V1V3"] <- 1
+core_crat_gen[,"Category"] <- "CRAT"
+```
+
+###combine core&crat data
+```{r}
+#Merge core data for v13
+core_gen_loose <- filter(core_gen_loose, !(Genus %in% core_gen_general$Genus)) #loose core (>20%) should not include general core (>50%)
+core_gen_general <- filter(core_gen_general, !(Genus %in% core_gen_strict$Genus))#general core (>50%) should not include strict core (>80%)
+
+core_gen2 <- rbind(core_gen_strict, core_gen_general) %>%
+  rbind(., core_gen_loose) %>%
+  rbind(., core_crat_gen) 
+
+```
+
+###Stats
+```{r}
+#check nr of genera in each category
+core_gen2 %>% 
+  group_by(Category) %>% 
+  distinct(Genus, .keep_all = T) %>% 
+  count()
+```
+
+###export list core-crat
+```{r}
+openxlsx::write.xlsx(core_gen2,'output/core&crat_genus.xlsx', rowNames = F)
+```
+
+##3)Species
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+dlong_sp <- amp_export_long(
+    dasn,
+    metadata_vars = "SampleSite", #data are aggregated at plant level (abundance recalculated at plant level)
+    tax_levels = c("Species"))
+```
+
+###CORE
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#group up and summarise for core taxa
+  core_sp <- dlong_sp[, .(sum = sum(count)), by = c("Species", "SampleSite")]   
+  data.table::setorderv(core_sp, c("SampleSite", "sum"), order = -1)
+  #calculate proportion % abundance of each ASV
+  core_sp[, SpeciesProp := sum / sum(sum) * 100, by = "SampleSite"]
+  #calculate how many times given ASV is observed in plants (>0)
+  core_sp <- core_sp[Species!=""] #remove rows where no species (unclassified ASVs)
+  core_sp[, nObs := sum(sum > 0), by = Species]
+  #calculate how many times (in how many plants) ASV is >0.1% abundant
+  core_sp[, nCore := sum(SpeciesProp > 0.1), by = Species]
+  #add column with sum of all the reads
+  core_sp[, totalReads := sum(sum)]
+    core_sp_summary <- core_sp[
+    , 
+    .(nSpecies = uniqueN(Species)),
+    by = .(nObs, nCore)]
+
+```
+
+
+
+```{r}
+###Retrive core data
+#subset ASVs present in the core
+core_sp_loose <- core_sp[(core_sp$nCore >= n_distinct(core_sp$SampleSite)*0.2),] %>% #loose core (20% plants)
+	group_by(Species) %>%
+	summarise(mean_abu = mean(SpeciesProp)) %>%
+           arrange(desc(mean_abu))
+core_sp_loose <- core_sp_loose[ core_sp_loose$Species != "", ]
+core_sp_loose$Species <- gsub("s__","",core_sp_loose$Species)
+core_sp_loose[,"V1V3"] <- 2
+core_sp_loose[,"Category"] <- "loose core"
+
+core_sp_general <- core_sp[(core_sp$nCore >= n_distinct(core_sp$SampleSite)*0.5),] %>% #general core (50% plants)
+	group_by(Species) %>%
+	summarise(mean_abu = mean(SpeciesProp)) %>%
+           arrange(desc(mean_abu))
+core_sp_general <- core_sp_general[ core_sp_general$Species != "", ]
+core_sp_general$Species <- gsub("s__","",core_sp_general$Species)
+core_sp_general[,"V1V3"] <- 3
+core_sp_general[,"Category"] <- "general core"
+
+core_sp_strict <- core_sp[(core_sp$nCore >= n_distinct(core_sp$SampleSite)*0.8),] %>% #strict core (80% plants)
+	group_by(Species) %>%
+	summarise(mean_abu = mean(SpeciesProp)) %>%
+           arrange(desc(mean_abu))
+core_sp_strict <- core_sp_strict[ core_sp_strict$Species != "", ]
+core_sp_strict$Species <- gsub("s__","",core_sp_strict$Species)
+core_sp_strict[,"V1V3"] <- 4
+core_sp_strict[,"Category"] <- "strict core"
+```
+
+###CRAT
+
+```{r}
+### Plot for conditional abundant genera
+  
+#group up and summarise for conditional abundant taxa (CAT)
+crat_sp <- dlong_sp[, .(sum = sum(count)), by = c("Species", "SampleSite")]   
+  setorderv(core_sp, c("SampleSite", "sum"), order = -1)
+  #calculate proportion % abundance of each ASV
+  crat_sp[, SpeciesProp := sum / sum(sum) * 100, by = "SampleSite"]
+  #calculate how many times given ASV is observed in plants (>0)
+  crat_sp <- crat_sp[Species!=""]
+
+  crat_sp$Species <- gsub("s__","",crat_sp$Species)#remove genus string so that the following filtering can work
+  
+ crat_sp <- crat_sp[!Species %in% c(core_sp_loose$Species, core_sp_general$Species, core_sp_strict$Species)] # Remove core ASVs 
+
+  crat_sp[, nObs := sum(sum > 0), by = Species]
+  #calculate how many times (in how many plants) ASV is >1% abundant
+  crat_sp[, nCA := sum(SpeciesProp > 1), by = Species]
+  #add column with sum of all the reads
+  crat_sp[, totalReads := sum(sum)]
+  crat_sp_summary <- crat_sp[,.(nSpecies = uniqueN(Species)), by = .(nObs, nCA)]
+```
+
+
+
+```{r}
+###Retrive CRAT data
+#subset Genera present in the core
+core_crat_sp <- crat_sp[(crat_sp$nCA >= 1)] %>%
+	group_by(Species) %>%
+	summarise(mean_abu = mean(SpeciesProp)) %>%
+           arrange(desc(mean_abu))
+core_crat_sp <- core_crat_sp[ core_crat_sp$Species != "", ]
+core_crat_sp[,"V1V3"] <- 1
+core_crat_sp[,"Category"] <- "CRAT"
+
+```
+
+###combine core&crat data
+```{r}
+#Merge core data for v13
+core_sp_loose <- filter(core_sp_loose, !(Species %in% core_sp_general$Species)) #loose core (>20%) should not include general core (>50%)
+core_sp_general <- filter(core_sp_general, !(Species %in% core_sp_strict$Species))#general core (>50%) should not include strict core (>80%)
+
+core_sp2 <- rbind(core_sp_strict, core_sp_general) %>%
+  rbind(., core_sp_loose) %>%
+  rbind(., core_crat_sp) %>%
+  merge(., tax[,c("Genus","Species")], by="Species", all.x=TRUE) %>% 
+  unique()
+
+```
+
+###Stats
+
+```{r}
+#nr of ASVs in each categories
+core_sp2 %>% 
+  group_by(Category) %>% 
+  distinct(Species, .keep_all = T) %>% 
+  count()
+```
+
+###export list core-crat
+```{r}
+openxlsx::write.xlsx(core_sp2,'output/core&crat_species.xlsx', rowNames = F)
+```
+
+#Summary core&CRAT
+
+##import core&crat data
+```{r}
+corecrat_asv <- readxl::read_excel("output/core&crat_ASV.xlsx") %>% 
+  rename(ASV = OTU)
+corecrat_gen <- readxl::read_excel("output/core&crat_genus.xlsx")
+corecrat_sp <- readxl::read_excel("output/core&crat_species.xlsx")
+```
+
+
+AS long format at ASV level per plant
+```{r}
+
+#hetamp: extract the abundance of all ASVs in all plants on average
+as_asv_txt <- amp_heatmap(dasn,
+            tax_show = 100000000000, 
+            group_by = c("SampleSite"),
+            tax_aggregate = "OTU",
+            tax_add = c("Genus", "Species"),
+            normalise = F,
+            textmap = T
+            )
+
+
+```
+
+merge long format with core-genus/species/ASV dataframes
+```{r}
+as_asv_txt2 <-as_asv_txt %>%
+  mutate(tax = rownames(as_asv_txt)) %>%
+  separate(tax, sep="; ", into=c("Genus","Species","ASV")) %>%
+  mutate(Genus = ifelse(grepl("ASV|unmatched",Genus),"Unclassified",Genus)) %>%
+  mutate(Species = ifelse(grepl("ASV|unmatched",Species),"Unclassified",Species)) %>%
+  
+  merge(corecrat_gen[,c("Genus", "Category")], by="Genus", all.x = TRUE) %>%
+  mutate(Genus_type = ifelse(Genus=="Unclassified","Unclassified",Category)) %>%
+  mutate(Genus_type = ifelse(is.na(Genus_type),"Other",Genus_type)) %>%
+  select(-Category) %>% 
+  
+  merge(corecrat_sp[,c("Species", "Category")], by="Species", all.x = TRUE) %>%
+  mutate(Species_type = ifelse(Species=="Unclassified","Unclassified", Category)) %>%
+  mutate(Species_type = ifelse(is.na(Species_type),"Other",Species_type)) %>%
+  select(-Category) %>% 
+  
+  merge(corecrat_asv[,c("ASV", "Category")], by="ASV", all.x = TRUE) %>% 
+  rename(ASV_type = Category) %>% 
+  mutate(ASV_type = ifelse(is.na(ASV_type), "Other", ASV_type)) %>% 
+  mutate(ASV_type = case_when(ASV_type == "loose core" ~ "Loose core",
+                                ASV_type == "general core" ~ "General core",
+                                ASV_type == "strict core" ~ "Strict core",
+                                TRUE ~ ASV_type)) %>% 
+  mutate(Species_type = case_when(Species_type == "loose core" ~ "Loose core",
+                                Species_type == "general core" ~ "General core",
+                                Species_type == "strict core" ~ "Strict core",
+                                TRUE ~ Species_type)) %>% 
+  mutate(Genus_type = case_when(Genus_type == "loose core" ~ "Loose core",
+                                Genus_type == "general core" ~ "General core",
+                                Genus_type == "strict core" ~ "Strict core",
+                                TRUE ~ Genus_type))
+
+# put on numbers of each group (e.g. how many spp in general core)
+as_asv_txt_number_ASV <- as_asv_txt2 %>%  
+  count(ASV_type) %>% 
+  rename(Number_ASVs = n) 
+as_asv_txt_number_SPP <- as_asv_txt2 %>%  group_by(Species) %>% 
+  count(Species_type) %>%
+  ungroup() %>% count(Species_type) %>% 
+  rename(Number_spp = n) %>% 
+  filter(!Species_type %in% 'Unclassified')
+as_asv_txt_number_genus <- as_asv_txt2 %>%  group_by(Genus) %>% 
+  count(Genus_type) %>%
+  ungroup() %>% count(Genus_type) %>% 
+  rename(Number_gen = n) %>% 
+  filter(!Genus_type %in% 'Unclassified')
+
+
+
+# make long format
+as_asv_txt2 <- as_asv_txt2 %>%
+  gather("Aalbæk":"Vojens", key="Plant", value="RRA")
+
+View(head(as_asv_txt2, 10))
+
+
+
+
+```
+
+##ASV
+```{r}
+#summary per plant
+summary_asv <- as_asv_txt2 %>% 
+  group_by(Plant,ASV_type) %>%
+  summarise(cum_rra_asv = sum(RRA)) %>%
+  mutate(ASV_type = factor(ASV_type, levels=c("Other", "CRAT", "Loose core", "General core", "Strict core")))
+
+p_asv_byplant <- ggplot(data = summary_asv, aes(x = Plant, y=cum_rra_asv, fill=ASV_type)) +
+geom_bar(stat = "identity") +
+#geom_bar(color="black",stat="identity", width=0.8) + #from Morten
+  labs( x = "WWTPs",
+        y = "Cumulative read abundance \nat ASV level [%]",
+        fill = "Core group",
+        tag = 'A') +
+    scale_fill_manual(#palette="RdYlBu", na.value = "grey"
+      values = rev(c("#D7191C", "#FDAE61", "#FFFFBF", "#ABD9E9", "grey")))+
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, colour = "black", hjust = 1, vjust = 0.5, size = 11),
+        axis.title.x = element_blank(),
+        legend.position = "bottom",
+        ) + scale_y_continuous(expand = c(0,0)) 
+#summary across plant
+summary_asv_avg <- summary_asv %>% 
+  group_by(ASV_type) %>%
+  summarise(mean_cum_rra_asv = mean(cum_rra_asv)) %>%
+  mutate(ASV_type = factor(ASV_type, levels=c("Other", "CRAT", "Loose core", "General core", "Strict core"))) %>% 
+  mutate(Avg = "All WWTPs") %>% 
+  left_join(., as_asv_txt_number_ASV, by = 'ASV_type')  %>%
+  mutate(ASV_type = factor(ASV_type, levels=c("Other", "CRAT", "Loose core", "General core", "Strict core")))
+
+p_asv_acrossplant <- ggplot(data = summary_asv_avg, aes(x = Avg, y=mean_cum_rra_asv, fill=ASV_type)) +
+geom_bar(stat = "identity") +
+  geom_text(data = summary_asv_avg, aes(label = paste0(round(mean_cum_rra_asv, digits = 1), ' % (', Number_ASVs,')')),
+             size = 3, position = position_stack(vjust = 0.5)) +
+#geom_bar(color="black",stat="identity", width=0.8) + #from Morten
+  labs( x = "WWTPs",
+        y = "Cumulative read abundance \nat ASV level [%]",
+        fill = "Core group") +
+    scale_fill_manual(#palette="RdYlBu", 
+      #na.value = "pink",
+      values = rev(c("#D7191C", "#FDAE61", "#FFFFBF", "#ABD9E9", "grey")))+
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, colour = "black", hjust = 1, vjust = 0.5, size = 11),
+        legend.position = "bottom",
+        axis.title.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()
+        ) + scale_y_continuous(expand = c(0,0)) 
+#combine species plot
+p_summ_asv <- (p_asv_byplant + p_asv_acrossplant + theme(axis.title.y = element_blank()) ) +
+  scale_x_discrete(expand = c(0,0)) +
+  plot_layout(ncol = 2, nrow = 1,
+    widths = c(1, 0.1),
+    guides = "collect") & 
+  theme(legend.position = "none") #+
+  
+p_summ_asv2 <- p_summ_asv + plot_annotation(
+) & theme(
+          plot.tag = element_text(face = 'bold', size = 18))
+p_summ_asv2
+```
+
+##Species
+```{r}
+#summary per plant
+summary_sp <- as_asv_txt2 %>% 
+  group_by(Plant,Species_type) %>%
+  summarise(cum_rra_sp = sum(RRA)) %>%
+  mutate(Species_type = factor(Species_type, levels=c("Unclassified", "Other", "CRAT", "Loose core", "General core", "Strict core")))
+
+p_sp_byplant <- ggplot(data = summary_sp, aes(x = Plant, y=cum_rra_sp, fill=Species_type)) +
+geom_bar(stat = "identity") +
+#geom_bar(color="black",stat="identity", width=0.8) + #from Morten
+  labs( x = "WWTPs",
+        y = "Cumulative read abundance \nat species level [%]",
+        fill = "Core group",
+        tag = 'B') +
+    scale_fill_manual(#palette="RdYlBu", na.value = "grey"
+      values = rev(c("#D7191C", "#FDAE61", "#FFFFBF", "#ABD9E9", "grey", "#f3f6f4")))+
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, colour = "black", hjust = 1, vjust = 0.5, size = 11),
+        legend.position = "bottom",
+        axis.title.x = element_blank()
+        ) + scale_y_continuous(expand = c(0,0)) 
+#summary across plant
+summary_sp_avg <- summary_sp %>% 
+  group_by(Species_type) %>%
+  summarise(mean_cum_rra_sp = mean(cum_rra_sp)) %>%
+  mutate(Species_type = factor(Species_type, levels=c("Unclassified", "Other", "CRAT", "Loose core", "General core", "Strict core"))) %>% 
+  mutate(Avg = "All WWTPs") %>% 
+  left_join(., as_asv_txt_number_SPP, by = 'Species_type')  %>%
+  mutate(Species_type = factor(Species_type, levels=c("Unclassified","Other", "CRAT", "Loose core", "General core", "Strict core")))
+
+p_sp_acrossplant <- ggplot(data = summary_sp_avg, aes(x = Avg, y=mean_cum_rra_sp, fill=Species_type)) +
+geom_bar(stat = "identity") +
+  geom_text(data = summary_sp_avg, aes(label = case_when(Species_type == 'Unclassified' ~ paste0(round(mean_cum_rra_sp, digits = 1), ' %'),
+                                                       TRUE ~ paste0(round(mean_cum_rra_sp, digits = 1), ' % (', Number_spp,')'))),
+             size = 3, position = position_stack(vjust = 0.5)) +
+#geom_bar(color="black",stat="identity", width=0.8) + #from Morten
+  labs( fill = "Core group") +
+    scale_fill_manual(#palette="RdYlBu", na.value = "grey"
+      values = rev(c("#D7191C", "#FDAE61", "#FFFFBF", "#ABD9E9", "grey", "#f3f6f4")))+
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, colour = "black", hjust = 1, vjust = 0.5, size = 11),
+        legend.position = "bottom",
+        axis.title.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()
+        ) + scale_y_continuous(expand = c(0,0)) 
+#combine species plot
+p_summ_sp <- (p_sp_byplant + p_sp_acrossplant + theme(axis.title.y = element_blank()) ) +
+  scale_x_discrete(expand = c(0,0)) +
+  plot_layout(ncol = 2, nrow = 1,
+    widths = c(1, 0.1),
+    guides = "collect") & 
+  theme(legend.position = "none") #+
+  
+p_summ_sp2 <- p_summ_sp + plot_annotation(
+) & theme(plot.title = element_text(face = 'bold'),
+          plot.tag = element_text(face = 'bold', size = 18))
+p_summ_sp2
+```
+
+
+##Genus
+```{r}
+#summary per plant
+summary_gen <- as_asv_txt2 %>% 
+  group_by(Plant,Genus_type) %>%
+  summarise(cum_rra_gen = sum(RRA)) %>%
+  mutate(Genus_type = factor(Genus_type, levels=c("Unclassified", "Other", "CRAT", "Loose core", "General core", "Strict core"))) 
+
+p_gen_byplant <- ggplot(data = summary_gen, aes(x = Plant, y=cum_rra_gen, fill=Genus_type)) +
+geom_bar(stat = "identity") +
+#geom_bar(color="black",stat="identity", width=0.8) + #from Morten
+  labs(
+        y = "Cumulative read abundance \nat genus level [%]",
+        fill = "Core group",
+        tag = 'C') +
+    scale_fill_manual(#palette="RdYlBu", na.value = "grey"
+      values = rev(c("#D7191C", "#FDAE61", "#FFFFBF", "#ABD9E9", "grey", "#f3f6f4")))+
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, colour = "black", hjust = 1, vjust = 0.5, size = 11),
+        legend.position = "bottom",
+        axis.title.x = element_blank()
+        ) + guides(fill = guide_legend(override.aes = list(color = "black", size = 0.3))) + scale_y_continuous(expand = c(0,0)) 
+#summary across plant
+summary_gen_avg <- summary_gen %>% 
+  group_by(Genus_type) %>%
+  summarise(mean_cum_rra_gen = mean(cum_rra_gen)) %>%
+  mutate(Avg = "All WWTPs")%>% 
+  left_join(., as_asv_txt_number_genus, by = 'Genus_type')  %>%
+  mutate(Genus_type = factor(Genus_type, levels=c("Unclassified","Other", "CRAT", "Loose core", "General core", "Strict core")))
+
+p_gen_acrossplant <- ggplot(data = summary_gen_avg, aes(x = Avg, y=mean_cum_rra_gen, fill=Genus_type)) +
+geom_bar(stat = "identity") +
+  geom_text(data = summary_gen_avg, aes(label = case_when(Genus_type == 'Unclassified' ~ paste0(round(mean_cum_rra_gen, digits = 1), ' %'),
+                                                       TRUE ~ paste0(round(mean_cum_rra_gen, digits = 1), ' % (', Number_gen,')'))),
+             size = 3, position = position_stack(vjust = 0.5)) +
+#geom_bar(color="black",stat="identity", width=0.8) + #from Morten
+  labs( fill = 'Core group') +
+    scale_fill_manual(#palette="RdYlBu", na.value = "grey"
+      values = rev(c("#D7191C", "#FDAE61", "#FFFFBF", "#ABD9E9", "grey", "#f3f6f4")))+
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, colour = "black", hjust = 1, vjust = 0.5, size = 11),
+        legend.position = "bottom",
+        axis.title.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()
+        ) + guides(fill = guide_legend(override.aes = list(color = "black", size = 0.3)))+ scale_y_continuous(
+                      expand = c(0,0)) 
+#combine species plot
+p_summ_gen <- (p_gen_byplant + p_gen_acrossplant + theme(axis.title.y = element_blank()) ) +
+  scale_x_discrete(expand = c(0,0))+
+  plot_layout(ncol = 2, nrow = 1,
+    widths = c(1, 0.1),
+    guides = "collect") & 
+  theme(legend.position = "bottom") 
+  
+p_summ_gen2 <- p_summ_gen + plot_annotation(
+) & theme(plot.title = element_text(face = 'bold'),
+          plot.tag = element_text(face = 'bold',size = 18)) 
+p_summ_gen2
+```
+##combo plot
+```{r}
+library(ggpubr)
+p <- ggarrange(p_summ_asv2,
+          p_summ_sp2,
+          p_summ_gen2,
+          ncol = 1,
+          nrow = 3,
+          heights = c(1, 1, 1.2))
+
+ggsave("output/Fig02_Core&CRAT_wNUM.png",
+       p,
+       width = 13, height = 15)
+
+ggsave("output/Fig02_Core&CRAT_wNUM.pdf",
+       p,
+       width = 13, height = 15,
+       useDingbats=FALSE, limitsize=FALSE)
+
+```
+
+

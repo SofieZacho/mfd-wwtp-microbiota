@@ -1,0 +1,92 @@
+---
+title: 'Figure S4: PCoA influent'
+author: "Sofie Zacho Vestergaard"
+date: "2024-01-09"
+output: html_document
+---
+
+```{r}
+library(ampvis2)
+library(tidyverse)
+library(patchwork)
+library(vegan)
+library(cowplot)
+library(ggtext)
+
+```
+
+
+
+```{r}
+d <- amp_load(otutable = 'data/ASV_table_combined.tsv',
+              taxonomy = 'data/ASVs_combined_MiDAS5.2.R1.sintax',
+              metadata = 'data/metadata.xlsx',
+              pruneSingletons = T) # remove singletons
+
+# merge replicates
+d_rep <- amp_merge_replicates(d, 
+                              merge_var = "SampleID_replicates", 
+                              round = 'up')
+
+d_rep$metadata <- d_rep$metadata %>%
+  rename(SampleID = SampleID_replicates)
+
+d_rep_filt_iww <- amp_subset_samples(d_rep,
+                                     SampleContent %in% 'IWW',
+                                     minreads = 50000,removeAbsentOTUs = F)
+
+
+set.seed(22)
+# rarefy
+d_rare_iww <- amp_rarefy(d_rep_filt_iww, rarefy = 50000) # 50 000 
+
+#normalise
+diwwn <- normaliseTo100(d_rare_iww)
+diwwn <- amp_subset_samples(diwwn, removeAbsentOTUs = T)
+
+```
+
+
+```{r}
+###adonis Plants IWW
+dist_iww_bray <- vegdist(t(diwwn$abund), method = "bray")
+adonis_iww_plant <- adonis2(dist_iww_bray ~ SampleSite, data = diwwn$metadata)
+```
+
+
+
+```{r}
+pcoa_iww_bray <- amp_ordinate(diwwn,
+             type = 'PCoA',
+             distmeasure = "bray",
+             transform = 'none',
+             filter_species = 0,
+             sample_color_by = "SampleSite",
+             sample_colorframe_label = "SampleSite"
+             ) +
+  theme(legend.position = "none") 
+  
+p_pcoa_iww_bray_plant <- pcoa_iww_bray +
+  geom_richtext(x=0.14, y=0.42,
+                    label = paste0("R\u00b2 = ", round(adonis_iww_plant$R2[[1]], 2), ", p-value = ", adonis_iww_plant$`Pr(>F)`[[1]]),
+                fontface="bold",hjust = 0,
+                size = 3.2,
+                color = 'black') 
+
+```
+
+
+```{r}
+ggsave('output/FigS1_PCoA_influent.png',
+       p_pcoa_iww_bray_plant,
+       width=5.8, height=5)
+
+ggsave('output/FigS1_PCoA_influent.pdf',
+       p_pcoa_iww_bray_plant,
+       width=5.8, height=5,
+       useDingbats=FALSE, limitsize=FALSE)
+
+
+```
+
+
