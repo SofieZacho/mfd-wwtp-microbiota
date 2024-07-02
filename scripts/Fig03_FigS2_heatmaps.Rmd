@@ -67,7 +67,7 @@ long_as_corecrat_gen <- amp_export_long(as_corecrat_gen,
 
 ```
 
-ricalculate abundance per taxa
+recalculate abundance per taxa
 ```{r}
 ##at species level
 long_as_corecrat_sp2 <- long_as_corecrat_sp %>% 

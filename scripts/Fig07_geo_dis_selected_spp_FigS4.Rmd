@@ -77,7 +77,7 @@ heat_as_spp_t <- left_join(heat_as_spp_t, all_plot, by = 'SampleSite')
 
 leg <- heat_as_spp_t # for later for legend extraction
 m <- mapDK(detail = 'region', 
-           map.fill = '#f1ead7',
+           map.fill = 'grey95',#'#f1ead7',
            map.colour = 'black')
 
 #alpha_value <- 0.8  # Set your desired alpha value
@@ -95,24 +95,17 @@ map_func <- function(x) {
                      y=Latitude,
                      fill = get(x),
                      group = get(x)), 
-                 size=2.6,
+                 size=2.4,
                  stroke = 0.8,
                  shape = 21,
-                 alpha = 1,
+                 alpha = 0.8,
                  colour = 'black' ) +
-    xlim(8,12.8) +
-    scale_fill_binned(breaks = c(0,0.001,0.1, 1),
-                      na.value = 'white',
-                      guide = guide_coloursteps(frame.color = 'black'),
-                      palette = ggplot2:::binned_pal(scales::manual_pal(values = cols)))+
-    theme(legend.position = 'none',
-          title = element_text(size = 10),
-          legend.title = element_blank(),
-          legend.text = element_text(size = 3, angle = 90),
-          legend.key.size = unit(0.3, 'cm'), #0.2
+    xlim(8,12.8)+
+  scale_fill_gradient('Relative\nabundance (%)' ,low='white', high='darkred', na.value = 'white') +
+    theme(legend.position = 'bottom',
+          title = element_text(size = 8, face = 'bold'),
           legend.justification="center",
-          legend.margin=margin(0,0,0,0),
-          legend.box.margin=margin(-10,-10,-10,-10)
+          legend.margin=margin(0,0,0,0)
     ) 
   #+
     # geom_text_repel(data = heat_as_spp_t,
@@ -132,7 +125,8 @@ micro <- map_func('Ca_Microthrix..Ca_Microthrix_parvicella') +
 
 epi <- map_func('Ca_Epiflobacter..midas_s_452') + 
   labs(title = 'Activated sludge')+
-  theme(plot.title = element_text(hjust = 0.5, size = 14))
+  theme(plot.title = element_text(hjust = 0.5, size = 14),
+        legend.key.size = unit(0.3, "cm"))
 
 
 
@@ -158,7 +152,9 @@ heat_as_spp_t <- left_join(heat_as_spp_t, all_plot, by = 'SampleSite')
 
 leg_iww <- heat_as_spp_t
 
-colors <- c('white','#ea9999','darkred')
+custom_format <- function(x) {
+  ifelse(x == 0, "0", scales::number(x, accuracy = 0.01))
+}
 
 iww_map_func <- function(x) {
   m + geom_point(data = heat_as_spp_t,
@@ -166,41 +162,43 @@ iww_map_func <- function(x) {
                      y=Latitude,
                      fill = get(x),
                      group = get(x)), 
-                 size=2.6,
+                 size=2.4,
                  stroke = 0.8,
                  shape = 21,
-                 alpha = 1,
+                 alpha = 0.8,
                  colour = 'black' ) +
-    xlim(8,12.8) +
-    scale_fill_binned(breaks = c(0,0.001, 0.01),
-                      na.value = 'white',
-                      guide = guide_coloursteps(frame.color = 'black'),
-                      palette = ggplot2:::binned_pal(scales::manual_pal(values = colors)))+
+    xlim(8,12.8)+
+    #ylim(54.8,57.9)+
+  scale_fill_gradient('Relative\nabundance (%)' ,low='white', high='darkred', na.value = 'white',
+                      labels = custom_format,
+                      breaks = c(0,0.008,0.016)) +
     labs(title = paste0(x)) +
-    theme(legend.position = 'none',
-          title = element_text(size = 10),
-          legend.title = element_blank(),
-          legend.text = element_text(size = 3, angle = 90),
-          legend.key.size = unit(0.3, 'cm'), #0.2
-          legend.justification="center",
-          legend.margin=margin(0,0,0,0),
-          legend.box.margin=margin(-10,-10,-10,-10)
+    theme(legend.position = 'bottom',
+          title = element_text(size = 8, face = 'bold'),
+          legend.margin=margin(0,0,0,-10)
     )
-  # +
-  #   geom_text_repel(data = heat_as_spp_t,
-  #                aes(x=Longitude,
-  #                    y=Latitude,
-  #                    label = round(get(x),5),
-  #                    group = get(x)))
-  
 }
+
 
 epi_iww <- iww_map_func('Ca_Epiflobacter..midas_s_452')+ 
   labs(title = "Influent") +
-  theme(plot.title = element_text(hjust = 0.5, size = 14))
+  theme(plot.title = element_text(hjust = 0.5, size = 14),
+        legend.key.size = unit(0.3, "cm"))
 
 
 ```
+
+```{r}
+epi_plot <- epi + epi_iww
+ggsave(filename = "output/Fig07_epi.png",
+         epi_plot,
+         width = 8, height = 3.8)
+ggsave(filename = "output/Fig07_epi.pdf", epi_plot,
+         width = 8, height = 3.8, useDingbats=FALSE, limitsize=FALSE)
+
+```
+
+
 
 ```{r}
 
