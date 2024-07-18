@@ -1,0 +1,85 @@
+---
+title: "FigSXX_sampling_campaign"
+author: "Sofie Zacho Vestergaard"
+date: "2024-07-03"
+output: html_document
+---
+```{r setup}
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+setwd(rprojroot::find_rstudio_root_file())
+```
+
+
+```{r}
+library(tidyverse)
+library(patchwork)
+```
+
+# Load data
+```{r}
+metadata <- readxl::read_xlsx('data/metadata.xlsx')
+```
+
+
+# make plot
+```{r}
+
+#For Brædstrup and Ringkøbing we do not know the exact sample date but they are within October-December
+
+
+mAAL <- metadata %>% filter(SampleSite == 'Aalborg E')
+mrest <- metadata %>% filter(!SampleSite == 'Aalborg E')
+
+
+plot <- ggplot(mrest, aes(group = SampleID_replicates)) +
+  geom_point(aes(x = SampleDate, y = SampleSite, fill = SampleContent),
+             position=position_dodge(width = 0.5),
+             shape = 21,
+             stroke = 0.3, size=2.3, alpha = 0.8) +
+  theme_minimal() +
+  labs(fill = 'Sample Content')+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(linewidth = 0.3, colour = 'grey30'),
+        panel.grid.minor.y = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks.x = element_line(linewidth = 0.5)) +
+  scale_x_datetime(date_breaks = "2 weeks") 
+  #+ facet_grid(row= vars(SampleContent))
+
+
+plotaa <- ggplot(mAAL) +
+  geom_point(aes(x = SampleDate, y = SampleSite, fill = SampleContent),
+             position=position_dodge(width = 0.8),
+             shape = 21,
+             stroke = 0.3, size=2.5, alpha = 0.8) +
+  theme_minimal() +
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(linewidth = 0.3, colour = 'grey30'),
+        panel.grid.minor.y = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks.x = element_line(linewidth = 0.5),
+        legend.position = 'none') +
+  scale_x_datetime(date_breaks = "1 month")
+ # + facet_grid(row= vars(SampleContent))
+
+
+save <- plot/plotaa + patchwork::plot_layout(heights = c(11,0.2),
+                                 guides = 'collect')
+
+
+ggsave('output/FigSxx_sampling_campaign.png',save,
+       width = 8,
+       height = 13)
+ggsave(filename="output/FigSxx_sampling_campaign.pdf", 
+       save,
+       width = 8,
+       height = 13, useDingbats=FALSE, limitsize=FALSE)
+
+
+
+```
+
+

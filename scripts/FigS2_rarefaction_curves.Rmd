@@ -1,0 +1,84 @@
+---
+title: "Figure S2 - rarefaction curves"
+author: "Sofie Zacho Vestergaard"
+date: "2024-07-18"
+output: html_document
+---
+
+```{r setup}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+```{r}
+library(ampvis2)
+library(tidyverse)
+
+d <- amp_load(otutable = 'data/ASV_table_combined.tsv',
+              taxonomy = 'data/ASVs_combined_MiDAS5.2.R1.sintax',
+              metadata = 'data/metadata.xlsx',
+              pruneSingletons = T) # remove singletons
+
+# merge replicates
+d_rep <- amp_merge_replicates(d, 
+                              merge_var = "SampleID_replicates", 
+                              round = 'up')
+
+d_rep$metadata <- d_rep$metadata %>%
+  rename(SampleID = SampleID_replicates)
+
+d_rep_filt_as <- amp_subset_samples(d_rep,
+                                    SampleContent %in% 'AS',
+                                    minreads = 10000, removeAbsentOTUs = F)
+d_rep_filt_iww <- amp_subset_samples(d_rep,
+                                     SampleContent %in% 'IWW',
+                                     minreads = 50000,removeAbsentOTUs = F)
+
+## rarecurves
+d_test <- amp_subset_samples(d_rep,
+                             SampleContent %in% 'AS')
+
+AS_rare <- amp_rarecurve(d_test, 
+              facet_by = c('SampleSite'), 
+              facet_scales = 'free',
+              color_by = 'SampleContent') +
+  labs(y = 'Number of observed ASVs') +
+  geom_vline(aes(xintercept =  10000), linewidth = 0.4, linetype = 2) +
+  scale_y_continuous(expand = c(0,0,0,1000))+
+  scale_x_continuous(expand = c(0,0,0,1000))+ 
+  scale_color_manual(values = '#84541E') +
+  theme(legend.position = 'none',
+        axis.text.x = element_text(size = 7),
+        axis.text.y = element_text(size = 7))
+
+ggsave('output/FigSxx_rarefaction_curves_AS.png', AS_rare,
+       width = 15, height = 15)
+ggsave(filename="output/FigSxx_rarefaction_curves_AS.pdf", 
+       AS_rare,
+       width = 15, height = 15, useDingbats=FALSE, limitsize=FALSE)
+
+
+dIWW <- amp_subset_samples(d_rep,
+                             SampleContent %in% 'IWW')
+
+IWW_rare <- amp_rarecurve(dIWW, 
+                         facet_by = c('SampleSite'), 
+                         facet_scales = 'free',
+                         color_by = 'SampleContent') +
+  labs(y = 'Number of observed ASVs') +
+  geom_vline(aes(xintercept =  50000), linewidth = 0.4, linetype = 2) +
+  scale_y_continuous(expand = c(0,0,0,1000))+
+  scale_x_continuous(expand = c(0,0,0,1000))+ 
+  scale_color_manual(values = '#34978F') +
+  theme(legend.position = 'none',
+        axis.text.x = element_text(size = 7),
+        axis.text.y = element_text(size = 7))
+
+ggsave('output/FigSxx_rarefaction_curves_IWW.png', IWW_rare,
+       width = 15, height = 15)
+ggsave(filename="output/FigSxx_rarefaction_curves_IWW.pdf", 
+       IWW_rare,
+       width = 15, height = 15, useDingbats=FALSE, limitsize=FALSE)
+
+
+```
+
