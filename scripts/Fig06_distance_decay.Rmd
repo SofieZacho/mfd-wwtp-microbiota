@@ -4,6 +4,10 @@ author: "Sofie Zacho Vestergaard"
 date: "2024-01-04"
 output: html_document
 ---
+```{r setup}
+
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
 
 ```{r}
 library(ampvis2)
@@ -44,8 +48,6 @@ set.seed(22)
 # rarefy
 d_rare_as <- amp_rarefy(d_rep_filt_as, rarefy = 10000) # 10 000
 d_rare_iww <- amp_rarefy(d_rep_filt_iww, rarefy = 50000) # 50 000 
-
-d_rare_as <- readRDS('output/amp_as_rarefied.rds')
 
 dasn <- normaliseTo100(d_rare_as)
 dasn <- amp_subset_samples(dasn, removeAbsentOTUs = T)

@@ -59,11 +59,11 @@ as_corecrat_sp <- amp_subset_taxa(dasn, tax_vector = sp)
 ```{r}
 long_as_corecrat_sp <- amp_export_long(as_corecrat_sp, 
                                         tax_levels = "Species",
-                                        metadata_vars = c("SampleID", "SampleSite", "SampleContent", "SampleDate", "Project")) 
+                                        metadata_vars = c("SampleID", "SampleSite", "SampleContent", "SampleDate", "Project", "Region")) 
 
 long_as_corecrat_gen <- amp_export_long(as_corecrat_gen, 
                                         tax_levels = "Genus",
-                                        metadata_vars = c("SampleID", "SampleSite", "SampleContent", "SampleDate", "Project")) 
+                                        metadata_vars = c("SampleID", "SampleSite", "SampleContent", "SampleDate", "Project", "Region")) 
 
 ```
 
@@ -71,12 +71,12 @@ recalculate abundance per taxa
 ```{r}
 ##at species level
 long_as_corecrat_sp2 <- long_as_corecrat_sp %>% 
-  group_by(SampleID, SampleSite, SampleContent, SampleDate, Species) %>% 
+  group_by(SampleID, SampleSite, SampleContent, SampleDate, Species, Region) %>% 
   summarise(rra_sp = sum(count)) 
 
 ##at genus level
 long_as_corecrat_gen2 <- long_as_corecrat_gen %>% 
-  group_by(SampleID, SampleSite, SampleContent, SampleDate, Genus) %>% 
+  group_by(SampleID, SampleSite, SampleContent, SampleDate, Genus, Region) %>% 
   summarise(rra_gen = sum(count)) 
 ```
 
@@ -99,6 +99,7 @@ long_as_corecrat_gen2 <- long_as_corecrat_gen2 %>%
 
 n_distinct(long_as_corecrat_gen2$Genus)  #total number of genera in strict core and general core (from table in paper)
 ```
+
 sort by abundance
 ```{r}
 #Species
@@ -143,7 +144,7 @@ plot
 
 long_as_corecrat_sp4 <- long_as_corecrat_sp3 %>% dplyr::group_by(SampleSite, Taxa) %>% 
   dplyr::mutate(rra_sp_mean = mean(rra_sp)) %>% 
-  select(SampleSite, Category, Taxa, rra_sp_mean) %>% unique()
+  select(SampleSite, Category, Taxa, rra_sp_mean, Region) %>% unique()
 
 
  
@@ -185,6 +186,9 @@ y_ax <- long_as_corecrat_sp4_f %>%
   pull(lab)
  
 long_as_corecrat_sp4_f$lab <- factor(long_as_corecrat_sp4_f$lab, levels = y_ax)
+long_as_corecrat_sp4_f$Region <- factor(long_as_corecrat_sp4_f$Region, levels = c(
+  'Northern', 'Central', 'Southern', 'Funen', 'Zealand'
+))
 # needs to make y axis right again
 
  plot <- ggplot(long_as_corecrat_sp4_f, aes(x = SampleSite, y = lab, fill = as.factor(bin))) +
@@ -193,19 +197,25 @@ long_as_corecrat_sp4_f$lab <- factor(long_as_corecrat_sp4_f$lab, levels = y_ax)
   scale_y_discrete(limits = rev, drop = T) +
   scale_fill_manual(values = colors, 
                     breaks = c(1,2,3,4,5,6), 
-                    labels = c("0-0.01", "0.01-0.1", "0.1-1", "1-5", "5-10", ">10")) +
+                    labels = c("0-0.01", "0.01-0.1", "0.1-1", "1-5", "5-10", ">10"))+
+   facet_grid(cols = vars(Region), scales = 'free',
+              space = 'free') +
+   theme_minimal()+
   theme(
     axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
     axis.text.y = element_markdown(colour = rev(col_sp_core)),
-    axis.title = element_blank()
+    axis.title = element_blank(),
+    panel.grid = element_blank(),
+    strip.background = element_rect( fill = 'grey92', linewidth  = 0.1, colour = 'grey90')
   ) +
   guides(fill = guide_legend(reverse = TRUE,
                              override.aes = list(color = "black", size = 0.5))) 
+   
+   
 
 
- 
-ggsave(plot ,filename="output/Fig03_Heatmap_core_species.png", width=11.5, height=7)
-ggsave(plot ,filename="output/Fig03_Heatmap_core_species.pdf", width=11.5, height=7,
+ggsave(plot ,filename="output/Fig03_Heatmap_core_species.png", width=12, height=7)
+ggsave(plot ,filename="output/Fig03_Heatmap_core_species.pdf", width=12, height=7,
        useDingbats=FALSE, limitsize=FALSE)
  
 ```
@@ -214,7 +224,7 @@ ggsave(plot ,filename="output/Fig03_Heatmap_core_species.pdf", width=11.5, heigh
 
 long_as_corecrat_gen4 <- long_as_corecrat_gen3 %>% dplyr::group_by(SampleSite, Genus) %>% 
   dplyr::mutate(rra_gen_mean = mean(rra_gen)) %>% 
-  select(SampleSite, Category, Genus, rra_gen_mean) %>% unique()
+  select(SampleSite, Category, Genus, rra_gen_mean, Region) %>% unique()
 
 
 # Categorize the data into bins
@@ -249,6 +259,9 @@ y_ax <- long_as_corecrat_gen4_f %>%
   pull(lab)
  
 long_as_corecrat_gen4_f$lab <- factor(long_as_corecrat_gen4_f$lab, levels = y_ax)
+long_as_corecrat_gen4_f$Region <- factor(long_as_corecrat_gen4_f$Region, levels = c(
+  'Northern', 'Central', 'Southern', 'Funen', 'Zealand'
+))
 # needs to make y axis right again
 
 
@@ -260,16 +273,21 @@ long_as_corecrat_gen4_f$lab <- factor(long_as_corecrat_gen4_f$lab, levels = y_ax
   scale_y_discrete(limits=rev, drop = T) +
   scale_fill_manual(values = colors, 
                     breaks = c(1,2,3,4,5,6), 
-                    labels = c("0-0.01", "0.01-0.1", "0.1-1", "1-5", "5-10", ">10")) +
+                    labels = c("0-0.01", "0.01-0.1", "0.1-1", "1-5", "5-10", ">10"))+
+   facet_grid(cols = vars(Region), scales = 'free',
+              space = 'free') +
+   theme_minimal()+
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
         axis.text.y = element_markdown(colour = rev(col_gen_core)),
-        axis.title = element_blank()
-        )+ guides(fill = guide_legend(reverse = TRUE,
+        axis.title = element_blank(),
+        panel.grid = element_blank(),
+        strip.background = element_rect( fill = 'grey92', linewidth  = 0.1, colour = 'grey90')
+        ) + guides(fill = guide_legend(reverse = TRUE,
                              override.aes = list(color = "black", size = 0.5)))
  
  
-  ggsave(plot,filename="output/FigS2_Heatmap_core_genera.png", width=11, height=14)
-ggsave(plot ,filename="output/FigS2_Heatmap_core_genera.pdf", width=11, height=14, useDingbats=FALSE, limitsize=FALSE)
+  ggsave(plot,filename="output/FigS2_Heatmap_core_genera.png", width=12, height=14)
+ggsave(plot ,filename="output/FigS2_Heatmap_core_genera.pdf", width=12, height=14, useDingbats=FALSE, limitsize=FALSE)
 ```
 
 

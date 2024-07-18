@@ -4,6 +4,9 @@ author: "Sofie Zacho Vestergaard"
 date: "2024-01-03"
 output: html_document
 ---
+```{r setup}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
 
 ```{r}
 library(ampvis2)
@@ -476,6 +479,8 @@ as_asv_txt <- amp_heatmap(dasn,
             textmap = T
             )
 
+#saveRDS(as_asv_txt, file = 'output/AS_txt_heat_ASV.rds')
+
 
 ```
 
@@ -537,8 +542,6 @@ as_asv_txt2 <- as_asv_txt2 %>%
 View(head(as_asv_txt2, 10))
 
 
-
-
 ```
 
 ##ASV
@@ -551,18 +554,16 @@ summary_asv <- as_asv_txt2 %>%
 
 p_asv_byplant <- ggplot(data = summary_asv, aes(x = Plant, y=cum_rra_asv, fill=ASV_type)) +
 geom_bar(stat = "identity") +
-#geom_bar(color="black",stat="identity", width=0.8) + #from Morten
-  labs( x = "WWTPs",
-        y = "Cumulative read abundance \nat ASV level [%]",
+  labs(y = "Cumulative read abundance [%]",
         fill = "Core group",
         tag = 'A') +
-    scale_fill_manual(#palette="RdYlBu", na.value = "grey"
-      values = rev(c("#D7191C", "#FDAE61", "#FFFFBF", "#ABD9E9", "grey")))+
+    scale_fill_manual(values = rev(c("#D7191C", "#FDAE61", "#FFFFBF", "#ABD9E9", "grey")))+
   theme_bw() +
   theme(axis.text.x = element_text(angle = 90, colour = "black", hjust = 1, vjust = 0.5, size = 11),
-        axis.title.x = element_blank(),
+        axis.title.x = element_blank(), axis.title.y = element_text(size = 13),
         legend.position = "bottom",
         ) + scale_y_continuous(expand = c(0,0)) 
+
 #summary across plant
 summary_asv_avg <- summary_asv %>% 
   group_by(ASV_type) %>%
@@ -574,14 +575,10 @@ summary_asv_avg <- summary_asv %>%
 
 p_asv_acrossplant <- ggplot(data = summary_asv_avg, aes(x = Avg, y=mean_cum_rra_asv, fill=ASV_type)) +
 geom_bar(stat = "identity") +
-  geom_text(data = summary_asv_avg, aes(label = paste0(round(mean_cum_rra_asv, digits = 1), ' % (', Number_ASVs,')')),
-             size = 3, position = position_stack(vjust = 0.5)) +
-#geom_bar(color="black",stat="identity", width=0.8) + #from Morten
-  labs( x = "WWTPs",
-        y = "Cumulative read abundance \nat ASV level [%]",
-        fill = "Core group") +
-    scale_fill_manual(#palette="RdYlBu", 
-      #na.value = "pink",
+  geom_text(data = summary_asv_avg, aes(label = paste0(round(mean_cum_rra_asv, digits = 1), ' %\n(', Number_ASVs,')')),
+             size = 3, position = position_stack(vjust = 0.5), lineheight = 0.72) +
+  labs( fill = "Core group") +
+    scale_fill_manual(
       values = rev(c("#D7191C", "#FDAE61", "#FFFFBF", "#ABD9E9", "grey")))+
   theme_bw() +
   theme(axis.text.x = element_text(angle = 90, colour = "black", hjust = 1, vjust = 0.5, size = 11),
@@ -590,18 +587,18 @@ geom_bar(stat = "identity") +
         axis.text.y = element_blank(),
         axis.ticks.y = element_blank()
         ) + scale_y_continuous(expand = c(0,0)) 
+
 #combine species plot
 p_summ_asv <- (p_asv_byplant + p_asv_acrossplant + theme(axis.title.y = element_blank()) ) +
   scale_x_discrete(expand = c(0,0)) +
   plot_layout(ncol = 2, nrow = 1,
-    widths = c(1, 0.1),
+    widths = c(2, 0.1),
     guides = "collect") & 
   theme(legend.position = "none") #+
   
 p_summ_asv2 <- p_summ_asv + plot_annotation(
 ) & theme(
           plot.tag = element_text(face = 'bold', size = 18))
-p_summ_asv2
 ```
 
 ##Species
@@ -614,18 +611,16 @@ summary_sp <- as_asv_txt2 %>%
 
 p_sp_byplant <- ggplot(data = summary_sp, aes(x = Plant, y=cum_rra_sp, fill=Species_type)) +
 geom_bar(stat = "identity") +
-#geom_bar(color="black",stat="identity", width=0.8) + #from Morten
-  labs( x = "WWTPs",
-        y = "Cumulative read abundance \nat species level [%]",
+  labs(y = "Cumulative read abundance [%]",
         fill = "Core group",
         tag = 'B') +
-    scale_fill_manual(#palette="RdYlBu", na.value = "grey"
-      values = rev(c("#D7191C", "#FDAE61", "#FFFFBF", "#ABD9E9", "grey", "#f3f6f4")))+
+    scale_fill_manual(values = rev(c("#D7191C", "#FDAE61", "#FFFFBF", "#ABD9E9", "grey", "#f3f6f4")))+
   theme_bw() +
   theme(axis.text.x = element_text(angle = 90, colour = "black", hjust = 1, vjust = 0.5, size = 11),
         legend.position = "bottom",
-        axis.title.x = element_blank()
+        axis.title.x = element_blank(), axis.title.y = element_text(size = 13)
         ) + scale_y_continuous(expand = c(0,0)) 
+
 #summary across plant
 summary_sp_avg <- summary_sp %>% 
   group_by(Species_type) %>%
@@ -637,10 +632,8 @@ summary_sp_avg <- summary_sp %>%
 
 p_sp_acrossplant <- ggplot(data = summary_sp_avg, aes(x = Avg, y=mean_cum_rra_sp, fill=Species_type)) +
 geom_bar(stat = "identity") +
-  geom_text(data = summary_sp_avg, aes(label = case_when(Species_type == 'Unclassified' ~ paste0(round(mean_cum_rra_sp, digits = 1), ' %'),
-                                                       TRUE ~ paste0(round(mean_cum_rra_sp, digits = 1), ' % (', Number_spp,')'))),
-             size = 3, position = position_stack(vjust = 0.5)) +
-#geom_bar(color="black",stat="identity", width=0.8) + #from Morten
+  geom_text(data = summary_sp_avg, aes(label = case_when(Species_type == 'Unclassified' ~ paste0(round(mean_cum_rra_sp, digits = 1), ' %'),TRUE ~ paste0(round(mean_cum_rra_sp, digits = 1), ' %\n(', Number_spp,')'))),
+             size = 3, position = position_stack(vjust = 0.5), lineheight = 0.72) +
   labs( fill = "Core group") +
     scale_fill_manual(#palette="RdYlBu", na.value = "grey"
       values = rev(c("#D7191C", "#FDAE61", "#FFFFBF", "#ABD9E9", "grey", "#f3f6f4")))+
@@ -655,14 +648,14 @@ geom_bar(stat = "identity") +
 p_summ_sp <- (p_sp_byplant + p_sp_acrossplant + theme(axis.title.y = element_blank()) ) +
   scale_x_discrete(expand = c(0,0)) +
   plot_layout(ncol = 2, nrow = 1,
-    widths = c(1, 0.1),
+    widths = c(2, 0.1),
     guides = "collect") & 
-  theme(legend.position = "none") #+
+  theme(legend.position = "none") 
   
 p_summ_sp2 <- p_summ_sp + plot_annotation(
 ) & theme(plot.title = element_text(face = 'bold'),
           plot.tag = element_text(face = 'bold', size = 18))
-p_summ_sp2
+
 ```
 
 
@@ -676,18 +669,16 @@ summary_gen <- as_asv_txt2 %>%
 
 p_gen_byplant <- ggplot(data = summary_gen, aes(x = Plant, y=cum_rra_gen, fill=Genus_type)) +
 geom_bar(stat = "identity") +
-#geom_bar(color="black",stat="identity", width=0.8) + #from Morten
-  labs(
-        y = "Cumulative read abundance \nat genus level [%]",
+  labs(y = "Cumulative read abundance [%]",
         fill = "Core group",
         tag = 'C') +
-    scale_fill_manual(#palette="RdYlBu", na.value = "grey"
-      values = rev(c("#D7191C", "#FDAE61", "#FFFFBF", "#ABD9E9", "grey", "#f3f6f4")))+
+    scale_fill_manual(values = rev(c("#D7191C", "#FDAE61", "#FFFFBF", "#ABD9E9", "grey", "#f3f6f4")))+
   theme_bw() +
   theme(axis.text.x = element_text(angle = 90, colour = "black", hjust = 1, vjust = 0.5, size = 11),
         legend.position = "bottom",
-        axis.title.x = element_blank()
+        axis.title.x = element_blank(), axis.title.y = element_text(size = 13)
         ) + guides(fill = guide_legend(override.aes = list(color = "black", size = 0.3))) + scale_y_continuous(expand = c(0,0)) 
+
 #summary across plant
 summary_gen_avg <- summary_gen %>% 
   group_by(Genus_type) %>%
@@ -698,10 +689,8 @@ summary_gen_avg <- summary_gen %>%
 
 p_gen_acrossplant <- ggplot(data = summary_gen_avg, aes(x = Avg, y=mean_cum_rra_gen, fill=Genus_type)) +
 geom_bar(stat = "identity") +
-  geom_text(data = summary_gen_avg, aes(label = case_when(Genus_type == 'Unclassified' ~ paste0(round(mean_cum_rra_gen, digits = 1), ' %'),
-                                                       TRUE ~ paste0(round(mean_cum_rra_gen, digits = 1), ' % (', Number_gen,')'))),
-             size = 3, position = position_stack(vjust = 0.5)) +
-#geom_bar(color="black",stat="identity", width=0.8) + #from Morten
+  geom_text(data = summary_gen_avg, aes(label = case_when(Genus_type == 'Unclassified' ~ paste0(round(mean_cum_rra_gen, digits = 1), ' %'), TRUE ~ paste0(round(mean_cum_rra_gen, digits = 1), ' %\n(', Number_gen,')'))),
+             size = 3, position = position_stack(vjust = 0.5), lineheight = 0.72) +
   labs( fill = 'Core group') +
     scale_fill_manual(#palette="RdYlBu", na.value = "grey"
       values = rev(c("#D7191C", "#FDAE61", "#FFFFBF", "#ABD9E9", "grey", "#f3f6f4")))+
@@ -717,14 +706,15 @@ geom_bar(stat = "identity") +
 p_summ_gen <- (p_gen_byplant + p_gen_acrossplant + theme(axis.title.y = element_blank()) ) +
   scale_x_discrete(expand = c(0,0))+
   plot_layout(ncol = 2, nrow = 1,
-    widths = c(1, 0.1),
+    widths = c(2, 0.1),
     guides = "collect") & 
-  theme(legend.position = "bottom") 
+  theme(legend.position = "bottom", legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14)) 
   
 p_summ_gen2 <- p_summ_gen + plot_annotation(
 ) & theme(plot.title = element_text(face = 'bold'),
           plot.tag = element_text(face = 'bold',size = 18)) 
-p_summ_gen2
+
 ```
 ##combo plot
 ```{r}
@@ -735,6 +725,10 @@ p <- ggarrange(p_summ_asv2,
           ncol = 1,
           nrow = 3,
           heights = c(1, 1, 1.2))
+ggsave("/Users/kl42gg/Downloads/Fig02_Core&CRAT_wNUM.png",
+        p,
+        width = 13, height = 15)
+
 
 ggsave("output/Fig02_Core&CRAT_wNUM.png",
        p,
