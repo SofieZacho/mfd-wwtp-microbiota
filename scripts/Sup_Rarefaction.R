@@ -1,0 +1,67 @@
+library(ampvis2)
+library(tidyverse)
+
+setwd(rprojroot::find_rstudio_root_file())
+
+d <- amp_load(otutable = 'data/ASV_table_combined.tsv',
+              taxonomy = 'data/ASVs_combined_MiDAS5.2.R1.sintax',
+              metadata = 'data/metadata.xlsx',
+              pruneSingletons = T) # remove singletons
+
+# merge replicates
+d_rep <- amp_merge_replicates(d, 
+                              merge_var = "SampleID_replicates", 
+                              round = 'up')
+
+d_rep$metadata <- d_rep$metadata %>%
+  rename(SampleID = SampleID_replicates)
+
+## rarecurves
+das <- amp_subset_samples(d_rep,
+                             SampleContent %in% 'AS')
+
+AS_rare <- amp_rarecurve(das, 
+              facet_by = c('SampleSite'), 
+              facet_scales = 'free',
+              color_by = 'SampleContent') +
+  labs(y = 'Number of observed ASVs') +
+  geom_vline(aes(xintercept =  10000), linewidth = 0.4, linetype = 2) +
+  scale_y_continuous(expand = c(0,0,0,1000))+
+  scale_x_continuous(expand = c(0,0,0,1000))+ 
+  scale_color_manual(values = '#84541E') +
+  theme(legend.position = 'none',
+        axis.text.x = element_text(size = 7),
+        axis.text.y = element_text(size = 7))
+
+ggsave('output/FigS2A_rarefaction_curves_AS.png', AS_rare,
+       width = 15, height = 15)
+ggsave(filename="output/FigS2A_rarefaction_curves_AS.pdf", 
+       AS_rare,
+       width = 15, height = 15, useDingbats=FALSE, limitsize=FALSE)
+
+dIWW <- amp_subset_samples(d_rep,
+                             SampleContent %in% 'IWW')
+
+IWW_rare <- amp_rarecurve(dIWW, 
+                         facet_by = c('SampleSite'), 
+                         facet_scales = 'free',
+                         color_by = 'SampleContent') +
+  labs(y = 'Number of observed ASVs') +
+  geom_vline(aes(xintercept =  50000), linewidth = 0.4, linetype = 2) +
+  scale_y_continuous(expand = c(0,0,0,1000))+
+  scale_x_continuous(expand = c(0,0,0,1000))+ 
+  scale_color_manual(values = '#34978F') +
+  theme(legend.position = 'none',
+        axis.text.x = element_text(size = 7),
+        axis.text.y = element_text(size = 7))
+
+ggsave('output/FigS2B_rarefaction_curves_IWW.png', IWW_rare,
+       width = 15, height = 15)
+ggsave(filename="output/FigS2B_rarefaction_curves_IWW.pdf", 
+       IWW_rare,
+       width = 15, height = 15, useDingbats=FALSE, limitsize=FALSE)
+
+
+
+
+
