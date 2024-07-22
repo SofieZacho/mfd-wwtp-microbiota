@@ -47,8 +47,6 @@ d_tot <- amp_merge_ampvis2(d_rare_as,
                            d_rare_iww,
                            by_refseq = F)
 
-d_tot <- readRDS('output/amp_rarefied.rds')
-
 #normalise
 dn <- normaliseTo100(d_tot)
 dn <- amp_subset_samples(dn, removeAbsentOTUs = T)
@@ -197,7 +195,6 @@ comparison <- ggpubr::compare_means(
   value_sim ~ tag, data = subx3, 
   group.by = "SampleSite.x", method = "wilcox.test", p.adjust.method = "bonferroni"
   )
-
 
 ```
 
