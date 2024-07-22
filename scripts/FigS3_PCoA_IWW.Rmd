@@ -1,9 +1,12 @@
 ---
-title: 'Figure S4: PCoA influent'
+title: 'Figure S3: PCoA influent'
 author: "Sofie Zacho Vestergaard"
 date: "2024-01-09"
 output: html_document
 ---
+```{r setup}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
 
 ```{r}
 library(ampvis2)
@@ -77,11 +80,11 @@ p_pcoa_iww_bray_plant <- pcoa_iww_bray +
 
 
 ```{r}
-ggsave('output/FigS1_PCoA_influent.png',
+ggsave('output/FigS3_PCoA_influent.png',
        p_pcoa_iww_bray_plant,
        width=5.8, height=5)
 
-ggsave('output/FigS1_PCoA_influent.pdf',
+ggsave('output/FigS3_PCoA_influent.pdf',
        p_pcoa_iww_bray_plant,
        width=5.8, height=5,
        useDingbats=FALSE, limitsize=FALSE)

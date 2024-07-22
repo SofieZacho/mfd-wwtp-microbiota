@@ -1,5 +1,5 @@
 ---
-title: 'Figure_5: Ordination'
+title: 'Figure S7: Ordination IWW colored by region'
 author: "Sofie Zacho Vestergaard"
 date: "2024-01-03"
 output: html_document
@@ -114,24 +114,6 @@ dist_matrix_bray <- vegdist(t(diwwn$abund), method = "bray")
 # Region
 adonis_reg <- adonis2(dist_matrix_bray ~ Region, data = diwwn$metadata)
 
-
-
-
-
-
-
-# # Design 
-# adonis_design <- adonis2(dist_matrix_bray ~ Design, data = diwwn$metadata)
-# 
-# 
-# # PE (categories)
-# adonis_PE_text <- adonis2(dist_matrix_bray ~ PEdesign_text, data = diwwn$metadata)
-# 
-# # industrial load (categories)
-# adonis_ind_text <- adonis2(dist_matrix_bray ~ Ind_text, data = diwwn$metadata, na.action = na.omit)
-# 
-
-
 ```
 
 
@@ -171,12 +153,12 @@ p_region <- ggplot(pcoa_iww_bray$data, aes(x = PCo1, y = PCo2)) +
   scale_fill_brewer(palette="RdYlBu")
 
 
-ggsave(filename="output/FigXX_PCoA_iww_Region.png", 
+ggsave(filename="output/FigS7_PCoA_iww_Region.png", 
        p_region,
        width=4, height=4,
        dpi = 320)
 
-ggsave(filename="output/FigXX_PCoA_iww_Region.pdf", 
+ggsave(filename="output/FigS7_PCoA_iww_Region.pdf", 
        p_region,
        width=4, height=4, useDingbats=FALSE, limitsize=FALSE)
 
@@ -184,6 +166,9 @@ ggsave(filename="output/FigXX_PCoA_iww_Region.pdf",
 ```
 
 
+
+
+# Add on (for growing only)
 ```{r}
 
 diwwn_growing <- amp_filter_taxa(d_rare_iww, tax_vector = growing_ASV, normalise = F)
@@ -239,7 +224,7 @@ ggsave(filename="output/FigXX_PCoA_iww_Region_grow_500.png",
        width=4, height=4,
        dpi = 320)
 
-ggsave(filename="output/FigXX_PCoA_iww_Region_grow.pdf", 
+ggsave(filename="output/FigS7_PCoA_iww_Region_grow.pdf", 
        p_region,
        width=4, height=4, useDingbats=FALSE, limitsize=FALSE)
 
@@ -255,142 +240,4 @@ h <- amp_heatmap(diwwn_growing,
                  facet_by = 'Region',
                  plot_values_size = 2)
 ```
-
-
-
-#Design
-# factorise
-pcoa_as_bray$data$Design <- factor(pcoa_as_bray$data$Design, levels = c("BioP", "ChemP", "Unknown"))
-
-col_design <- c('#FDAE61','#ABD9E9','grey95')
-
-p_design <- ggplot(pcoa_as_bray$data, aes(x = PCo1, y = PCo2)) +
-  geom_point(aes(fill = Design), size=1.8, shape = 21, alpha = 1) +
-  labs(x = pcoa_as_bray$labels$x, y = pcoa_as_bray$labels$y, tag= 'B',
-       fill = "Design") +
-  #ylim(-0.33,0.33)+
-  theme_bw() +
-  theme(axis.text = element_text(size = atex, color = "black"),
-        axis.title = element_text(color = "black",face = 'bold', size = atit),
-        plot.title = element_text(hjust = 0.5, vjust = 0.5),
-        legend.position = 'top',
-        legend.title = element_text(face = 'bold', size = 7),
-        legend.text = element_text(size = 6),
-        plot.tag = element_text(face = 'bold', size = 10),
-        legend.margin = margin(0, 0, -5, 0),
-        axis.text.y = element_blank(),
-        axis.title.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        legend.key.size = unit(0.3, "cm"),
-        plot.margin = unit(c(-0.2,0,0,0), "cm")
-        ) +
-  guides(fill=guide_legend(title.position="top", 
-                           title.hjust =0.5,
-                           nrow = 2)
-         
-  )+
-  geom_richtext( 
-           x=0.22, y=0.28, 
-           size = unit(1.8, "pt"),
-           fontface="bold",
-           label.padding = grid::unit(rep(0.8, 4), "pt"),
-           label=paste("R\u00b2 =", round(adonis_design$R2[[1]], 2), "<br>p-value =", adonis_design$`Pr(>F)`[[1]]),
-           color="black") +
-  scale_fill_manual('Design', values = col_design )
-
-#PE
-p_pe <- ggplot(pcoa_as_bray$data, aes(x = PCo1, y = PCo2)) +
-  geom_point(aes(fill = PEdesign/1000), size=1.8, shape = 21, alpha = 1) +
-  labs(x = pcoa_as_bray$labels$x, y = pcoa_as_bray$labels$y, tag = 'C') +
-  #ylim(-0.33,0.33)+
-  theme_bw() +
-  theme(
-        axis.text = element_text(size = atex, color = "black"),
-        plot.title = element_text(hjust = 0.5, vjust = 0.5),
-        legend.key.size = unit(0.4, "cm"),
-        legend.margin = margin(0, 0, -5, 0)
-  ) +
-  scale_fill_gradient('PE (thousands)',
-                        low = '#dcefe8',
-                        high = '#274e13',
-                        na.value = '#274e13', limits = c(0,420),
-                      breaks= c(0,100,200,300,420),
-                      labels = c('0', '100','200', '300', '>420'),
-                        guide = guide_colourbar(title.position="top",
-                                                title.hjust =0.5)) +
-  theme(legend.position = 'top',
-        legend.title = element_text(face = 'bold', size = 7),
-        legend.text = element_text(size = 6),
-        plot.tag = element_text(face = 'bold', size = 10),
-        axis.text.y = element_blank(),
-        axis.title.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        axis.title.x = element_text(face = 'bold', size = atit,color = "black"),
-        plot.margin = unit(c(0,0,0,0), "cm")) +
-  geom_richtext( 
-           x=0.22, y=0.28, 
-           size = unit(1.8, "pt"),
-           fontface="bold",
-           label.padding = grid::unit(rep(0.8, 4), "pt"),
-           label=paste("R\u00b2 =", round(adonis_PE_text$R2[[1]], 2), "<br>p-value =", adonis_PE_text$`Pr(>F)`[[1]]),
-           color="black")
-
-
-#Industrial load
-p_load <- ggplot(pcoa_as_bray$data, aes(x = PCo1, y = PCo2)) +
-  geom_point(aes(fill = `IndustrialLoad[%]`), size=1.8, shape = 21, alpha = 1) + 
-  #ylim(-0.33,0.33)+
-  labs(x = pcoa_as_bray$labels$x, y = pcoa_as_bray$labels$y,tag = 'D'
-       ) +
-  theme_bw() +
-  theme(axis.text = element_text(size = atex, color = "black"),
-        axis.title = element_text(size = 10, color = "black"),
-        plot.title = element_text(hjust = 0.5, vjust = 0.5),
-        legend.key.size = unit(0.4, "cm"),
-        legend.margin = margin(0, 0, -5, 0)
-  ) +
-  scale_fill_gradient('Industrial load (%)',
-                        low = '#fddbc0',
-                        high = 'darkred',
-                        na.value = 'grey90',
-                        guide = guide_colourbar(title.position="top",
-                                                title.hjust =0.5)) +
-  theme(legend.position = 'top',
-        legend.title = element_text(face = 'bold', size = 7),
-        legend.text = element_text(size = 6),
-        plot.tag = element_text(face = 'bold', size = 10),
-        axis.text.y = element_blank(),
-        axis.title.y = element_blank(),
-        axis.title.x = element_text(face = 'bold', size = atit),
-        axis.ticks.y = element_blank(),
-        plot.margin = unit(c(0,0,0,0), "cm"))+
-  geom_richtext( 
-           x=0.22, y=0.28, 
-           size = unit(1.8, "pt"),
-           fontface="bold",
-           label.padding = grid::unit(rep(0.8, 4), "pt"),
-           label=paste("R\u00b2 =", round(adonis_ind_text$R2[[1]], 2), "<br>p-value =", adonis_ind_text$`Pr(>F)`[[1]]),
-           color="black")
-
-
-#combine plots
-options("aplot_guides" = "keep")
-p <- p_load %>% aplot::insert_left(p_pe) %>%
-  aplot::insert_left(p_design) %>%
-  aplot::insert_left(p_region)
-
-
-ggsave(filename="output/FigXX_PCoA_core_AS_bray_parameters.png", 
-       p,
-       width=7.8, height=2.6,
-       dpi = 320)
-
-ggsave(filename="output/FigXX_PCoA_core_AS_bray_parameters.pdf", 
-       p,
-       width=7.8, height=2.6, useDingbats=FALSE, limitsize=FALSE)
-
-```
-
-
-
 

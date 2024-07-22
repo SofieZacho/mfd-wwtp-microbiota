@@ -1,13 +1,11 @@
 ---
-title: "FigSXX_sampling_campaign"
+title: "Figure S1: Sampling Campaign"
 author: "Sofie Zacho Vestergaard"
 date: "2024-07-03"
 output: html_document
 ---
 ```{r setup}
-
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
-setwd(rprojroot::find_rstudio_root_file())
 ```
 
 
@@ -70,10 +68,10 @@ save <- plot/plotaa + patchwork::plot_layout(heights = c(11,0.2),
                                  guides = 'collect')
 
 
-ggsave('output/FigSxx_sampling_campaign.png',save,
+ggsave('output/FigS1_sampling_campaign.png',save,
        width = 8,
        height = 13)
-ggsave(filename="output/FigSxx_sampling_campaign.pdf", 
+ggsave(filename="output/FigS1_sampling_campaign.pdf", 
        save,
        width = 8,
        height = 13, useDingbats=FALSE, limitsize=FALSE)

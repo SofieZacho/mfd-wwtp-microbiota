@@ -1,10 +1,12 @@
 ---
-title: 'Figure 7 + Figure S4: Geographical distribution'
+title: 'Figure 7 + Figure S10: Geographical distribution'
 author: "Sofie Zacho Vestergaard"
 date: "2024-01-04"
 output: html_document
 ---
-
+```{r setup}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
 
 ```{r}
 library(ampvis2)
@@ -289,10 +291,10 @@ ggsave(filename = "output/Fig07_epi.pdf", epi_plot,
 
 
 sup <- ama + micro + legend_vertical + plot_layout(widths  = c(0.45, 0.45,0.15))
-ggsave(filename = "output/Fig07_supplementary.png",
+ggsave(filename = "output/FigS10_supplementary.png",
          sup,
          width = 8, height = 4)
-ggsave(filename = "output/Fig07_supplementary.pdf",
+ggsave(filename = "output/FigS10_supplementary.pdf",
          sup,
          width = 8, height = 4, useDingbats=FALSE, limitsize=FALSE)
 

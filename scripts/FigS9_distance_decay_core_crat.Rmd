@@ -1,11 +1,10 @@
 ---
-title: 'Figure 6: distance decay'
+title: 'Figure S9: Distance decay for core and CRAT'
 author: "Sofie Zacho Vestergaard"
 date: "2024-01-04"
 output: html_document
 ---
 ```{r setup}
-
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 ```
 
@@ -74,10 +73,10 @@ dasn_CRAT <- amp_subset_taxa(dasn, tax_vector = CRAT, normalise = F)
 
 ###prepare data
 ```{r}
-ASabund <- t(dasn_CRAT$abund) #transpose the abundance dataframe #change df
+ASabund <- t(dasn_core$abund) #transpose the abundance dataframe #change df
 
 #longitude and latitute table
-AS_geo <- dasn_CRAT$metadata %>%  #change df
+AS_geo <- dasn_core$metadata %>%  #change df
   select(`Longitude`, `Latitude`, SampleID, SampleSite, SampleDate) %>% #extract the unique geographical distances from the metadata. By including SampleID, all samples from all Plants are included
   mutate(ID = paste(SampleID, SampleSite, SampleDate, sep = "_")) %>% 
   unique()
@@ -241,8 +240,8 @@ p <- plot_grid(p_AS_bray + labs(tag= 'A')+ theme(plot.tag = element_text(face='b
                       ncol = 1,
                       nrow = 2,
                       rel_widths = c(1, 1))
-ggsave(filename = "output/FigSxx_DDR_ASV_CRAT.jpeg", height = 7, width = 7,limitsize=FALSE)
-ggsave(filename = "output/FigSxx_DDR_ASV_CRAT.pdf", height = 7, width = 7, useDingbats=FALSE, limitsize=FALSE)
+ggsave(filename = "output/FigS9_DDR_ASV_core.jpeg", height = 7, width = 7,limitsize=FALSE)
+ggsave(filename = "output/FigS9_DDR_ASV_core.pdf", height = 7, width = 7, useDingbats=FALSE, limitsize=FALSE)
 ```
 
 

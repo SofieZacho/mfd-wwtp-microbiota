@@ -4,6 +4,12 @@ author: "Sofie Zacho Vestergaard"
 date: "2024-01-04"
 output: html_document
 ---
+
+```{r setup}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+
 ```{r}
 library(ampvis2)
 library(tidyverse)
@@ -11,7 +17,6 @@ library(patchwork)
 library(readxl)
 library(ggrepel)
 library(cowplot)
-
 ```
 
 
@@ -43,16 +48,18 @@ set.seed(22)
 d_rare_as <- amp_rarefy(d_rep_filt_as, rarefy = 10000) # 10 000
 d_rare_iww <- amp_rarefy(d_rep_filt_iww, rarefy = 50000) # 50 000 
 
+d_rare_as_rm <- amp_subset_samples(d_rare_as,removeAbsentOTUs = T)
+d_rare_iww_rm <- amp_subset_samples(d_rare_iww,removeAbsentOTUs = T)
 
-dasn <- normaliseTo100(d_rare_as)
-diwwn <- normaliseTo100(d_rare_iww)
+dasn <- normaliseTo100(d_rare_as_rm)
+diwwn <- normaliseTo100(d_rare_iww_rm)
 
 ```
 
 
 # load 
 ```{r}
-fate <- read_xlsx('output/growth_fate_ASV.xlsx')
+fate <- read_xlsx("output/DatasetS3.xlsx")
 
 core_crat <- read_xlsx("output/core&crat_ASV.xlsx") %>% 
   mutate(Category = case_when(Category == 'strict core' ~ 'Strict core',
@@ -282,6 +289,7 @@ heat_as_core_crat <- amp_heatmap(dasn,
                                  group_by = 'SampleSite',
                                  textmap = T)
 saveRDS(heat_as_core_crat, "output/heat_as_only_ASV_label.rds")
+
 # Convert row names to a column
 heat_as_core_crat <- tibble::rownames_to_column(heat_as_core_crat, var = "OTU")
 
@@ -456,7 +464,7 @@ pf <- p_all_fate + labs(tag = 'A') +
   theme(plot.tag = element_text(face = 'bold')) 
 
 
-p_final <- (pf + plot_spacer() + com) + plot_layout(widths  = c(0.65, 0.07, 1.28))
+p_final <- (pf + plot_spacer() + com) + plot_layout(widths  = c(0.65, 0.07, 1.20))
 
 # put on legend
 leg <- df_for_plot %>%  
@@ -469,19 +477,19 @@ leg <- df_for_plot %>%
 
 
 # Extract the legend from the existing plot
-legend <- get_legend(leg)
+legend <- ggpubr::get_legend(leg)
 
 pfi <- p_final/legend + plot_layout(heights = c(0.95,0.05))
 
 ggsave('output/Fig04_fate_all_ASVs_core.png',
        pfi,
-       width = 9.4,
+       width = 9,
        height = 6.8,
        dpi = 320)
 
 ggsave('output/Fig04_fate_all_ASVs_core.pdf',
        pfi,
-       width = 9.4,
+       width = 9,
        height = 6.8, useDingbats=FALSE, limitsize=FALSE)
 
 ```

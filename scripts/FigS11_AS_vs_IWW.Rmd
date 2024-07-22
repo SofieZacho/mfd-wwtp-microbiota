@@ -1,9 +1,12 @@
 ---
-title: 'Figure S5: AS vs IWW'
+title: 'Figure S11: AS vs IWW'
 author: "Sofie Zacho Vestergaard"
 date: "2024-01-05"
 output: html_document
 ---
+```{r setup}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
 
 ```{r}
 library(ampvis2)
@@ -56,7 +59,6 @@ dn <- amp_subset_samples(dn, removeAbsentOTUs = T)
 ```{r}
 # combine data for AS and IWW
 abund <- t(dn$abund)
-
 ```
 
 ##Calc Dist
@@ -180,12 +182,12 @@ p_jacc <-ggplot(subx3, aes(x=SampleSite.x, y=value_sim,
 
 # save plots
 ggsave(p_jacc,
-       filename = "output/FigS5_IWW_AS_comparison_jaccard.png",
+       filename = "output/FigS11_IWW_AS_comparison_jaccard.png",
        height = 4.5,
        width = 8)
 
 ggsave(p_jacc,
-       filename = "output/FigS5_IWW_AS_comparison_jaccard.pdf",
+       filename = "output/FigS11_IWW_AS_comparison_jaccard.pdf",
        height = 4.5,
        width = 8, useDingbats=FALSE, limitsize=FALSE)
 

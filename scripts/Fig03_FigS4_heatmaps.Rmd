@@ -1,5 +1,5 @@
 ---
-title: 'Figure 3: heatmap species core + Figure S2: heatmap core genera'
+title: 'Figure 3: heatmap species core + Figure S4: heatmap core genera'
 author: "Sofie Zacho Vestergaard"
 date: "2024-01-04"
 output: html_document
@@ -289,8 +289,8 @@ long_as_corecrat_gen4_f$Region <- factor(long_as_corecrat_gen4_f$Region, levels 
                              override.aes = list(color = "black", size = 0.5)))
  
  
-  ggsave(plot,filename="output/FigS2_Heatmap_core_genera.png", width=12, height=14)
-ggsave(plot ,filename="output/FigS2_Heatmap_core_genera.pdf", width=12, height=14, useDingbats=FALSE, limitsize=FALSE)
+  ggsave(plot,filename="output/FigS4_Heatmap_core_genera.png", width=12, height=14)
+ggsave(plot ,filename="output/FigS4_Heatmap_core_genera.pdf", width=12, height=14, useDingbats=FALSE, limitsize=FALSE)
 ```
 
 

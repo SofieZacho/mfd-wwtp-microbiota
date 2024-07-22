@@ -34,10 +34,10 @@ d_rep_filt_iww <- amp_subset_samples(d_rep,
                                      minreads = 50000,removeAbsentOTUs = F)
 
 ## rarecurves
-d_test <- amp_subset_samples(d_rep,
+das <- amp_subset_samples(d_rep,
                              SampleContent %in% 'AS')
 
-AS_rare <- amp_rarecurve(d_test, 
+AS_rare <- amp_rarecurve(das, 
               facet_by = c('SampleSite'), 
               facet_scales = 'free',
               color_by = 'SampleContent') +
@@ -50,9 +50,9 @@ AS_rare <- amp_rarecurve(d_test,
         axis.text.x = element_text(size = 7),
         axis.text.y = element_text(size = 7))
 
-ggsave('output/FigSxx_rarefaction_curves_AS.png', AS_rare,
+ggsave('output/FigS2A_rarefaction_curves_AS.png', AS_rare,
        width = 15, height = 15)
-ggsave(filename="output/FigSxx_rarefaction_curves_AS.pdf", 
+ggsave(filename="output/FigS2A_rarefaction_curves_AS.pdf", 
        AS_rare,
        width = 15, height = 15, useDingbats=FALSE, limitsize=FALSE)
 
@@ -73,9 +73,9 @@ IWW_rare <- amp_rarecurve(dIWW,
         axis.text.x = element_text(size = 7),
         axis.text.y = element_text(size = 7))
 
-ggsave('output/FigSxx_rarefaction_curves_IWW.png', IWW_rare,
+ggsave('output/FigS2B_rarefaction_curves_IWW.png', IWW_rare,
        width = 15, height = 15)
-ggsave(filename="output/FigSxx_rarefaction_curves_IWW.pdf", 
+ggsave(filename="output/FigS2B_rarefaction_curves_IWW.pdf", 
        IWW_rare,
        width = 15, height = 15, useDingbats=FALSE, limitsize=FALSE)
 

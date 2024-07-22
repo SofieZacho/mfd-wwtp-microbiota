@@ -1,5 +1,5 @@
 ---
-title: 'Figure_5: Ordination'
+title: 'Figure S5+6: Ordination for core + CRAT'
 author: "Sofie Zacho Vestergaard"
 date: "2024-01-03"
 output: html_document
@@ -54,13 +54,13 @@ corecrat_ASV <- readxl::read_excel("output/core&crat_ASV.xlsx")
 ##subset
 ```{r}
 # change according to which group is to be investigated
-core_ASVs <- corecrat_ASV$OTU # Core + CRAT
+core_CRAT_ASVs <- corecrat_ASV$OTU # Core + CRAT
 core_ASVs <- corecrat_ASV %>% filter(!Category %in% 'CRAT') %>% pull(OTU) # Only core
-core_ASVs <- corecrat_ASV %>% filter(Category %in% 'CRAT') %>% pull(OTU) # Only CRAT
+CRAT_ASVs <- corecrat_ASV %>% filter(Category %in% 'CRAT') %>% pull(OTU) # Only CRAT
 
 
 dasn_core_crat <- amp_subset_taxa(dasn,
-                                     tax_vector = core_ASVs)
+                                     tax_vector = core_ASVs) # change here what you want to subset to
 
 dasn <- dasn_core_crat
 ```
@@ -284,12 +284,12 @@ p <- p_load %>% aplot::insert_left(p_pe) %>%
   aplot::insert_left(p_region)
 
 
-ggsave(filename="output/FigXX_PCoA_core_AS_bray_parameters.png", 
+ggsave(filename="output/FigS5_PCoA_core_AS_bray_parameters.png", 
        p,
        width=7.8, height=2.6,
        dpi = 320)
 
-ggsave(filename="output/FigXX_PCoA_core_AS_bray_parameters.pdf", 
+ggsave(filename="output/FigS5_PCoA_core_AS_bray_parameters.pdf", 
        p,
        width=7.8, height=2.6, useDingbats=FALSE, limitsize=FALSE)
 

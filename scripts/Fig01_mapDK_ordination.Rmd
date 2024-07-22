@@ -4,6 +4,12 @@ author: "Sofie Zacho Vestergaard"
 date: "2024-01-03"
 output: html_document
 ---
+
+```{r setup}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+
 ```{r}
 library(ampvis2)
 library(tidyverse)
