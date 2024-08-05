@@ -1,5 +1,5 @@
 ---
-title: 'Figure S11: AS vs IWW'
+title: 'Figure S12: AS vs IWW'
 author: "Sofie Zacho Vestergaard"
 date: "2024-01-05"
 output: html_document
@@ -180,12 +180,12 @@ p_jacc <-ggplot(subx3, aes(x=SampleSite.x, y=value_sim,
 
 # save plots
 ggsave(p_jacc,
-       filename = "output/FigS11_IWW_AS_comparison_jaccard.png",
+       filename = "output/FigS12_IWW_AS_comparison_jaccard.png",
        height = 4.5,
        width = 8)
 
 ggsave(p_jacc,
-       filename = "output/FigS11_IWW_AS_comparison_jaccard.pdf",
+       filename = "output/FigS12_IWW_AS_comparison_jaccard.pdf",
        height = 4.5,
        width = 8, useDingbats=FALSE, limitsize=FALSE)
 

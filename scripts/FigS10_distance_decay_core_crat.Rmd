@@ -1,5 +1,5 @@
 ---
-title: 'Figure S9: Distance decay for core and CRAT'
+title: 'Figure S10: Distance decay for core and CRAT'
 author: "Sofie Zacho Vestergaard"
 date: "2024-01-04"
 output: html_document
@@ -240,8 +240,8 @@ p <- plot_grid(p_AS_bray + labs(tag= 'A')+ theme(plot.tag = element_text(face='b
                       ncol = 1,
                       nrow = 2,
                       rel_widths = c(1, 1))
-ggsave(filename = "output/FigS9_DDR_ASV_core.jpeg", height = 7, width = 7,limitsize=FALSE)
-ggsave(filename = "output/FigS9_DDR_ASV_core.pdf", height = 7, width = 7, useDingbats=FALSE, limitsize=FALSE)
+ggsave(filename = "output/FigS10_DDR_ASV_core.jpeg", height = 7, width = 7,limitsize=FALSE)
+ggsave(filename = "output/FigS10_DDR_ASV_core.pdf", height = 7, width = 7, useDingbats=FALSE, limitsize=FALSE)
 ```
 
 

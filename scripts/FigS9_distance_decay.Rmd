@@ -1,5 +1,5 @@
 ---
-title: 'Figure S8: Distance decay'
+title: 'Figure S9: Distance decay'
 author: "Sofie Zacho Vestergaard"
 date: "2024-01-08"
 output: html_document
@@ -401,8 +401,8 @@ p_species <- plot_grid(p_AS_bray_species + labs(tag= 'B')+ theme(plot.tag = elem
 p <- p_genus + p_species
 
 
-ggsave(p,filename = "output/FigS8_DDR-ASall_Bray&Sor_gen_spp.jpeg", height = 7, width = 12.5)
-ggsave(p,filename = "output/FigS8_DDR-ASall_Bray&Sor_gen_spp.pdf", height = 7, width = 12.5,
+ggsave(p,filename = "output/FigS9_DDR-ASall_Bray&Sor_gen_spp.jpeg", height = 7, width = 12.5)
+ggsave(p,filename = "output/FigS9_DDR-ASall_Bray&Sor_gen_spp.pdf", height = 7, width = 12.5,
       useDingbats=FALSE, limitsize=FALSE)
 
 
