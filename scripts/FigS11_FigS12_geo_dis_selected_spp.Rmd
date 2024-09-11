@@ -77,7 +77,8 @@ heat_as_spp_t <- data.frame(t(heat_as_spp))
 heat_as_spp_t$SampleSite <- rownames(heat_as_spp_t)
 heat_as_spp_t <- left_join(heat_as_spp_t, all_plot, by = 'SampleSite')
 
-leg <- heat_as_spp_t # for later for legend extraction
+
+
 m <- mapDK(detail = 'region', 
            map.fill = 'grey95',#'#f1ead7',
            map.colour = 'black')
@@ -138,6 +139,82 @@ epi <- map_func('Ca_Epiflobacter..midas_s_452') +
 ```{r}
 #### Epiflobacter
 
+
+
+as_select <- amp_subset_taxa(dasn, tax_vector = tax_vector_spp)
+
+heat_as_spp <- amp_heatmap(as_select,
+                           group_by = 'SampleSite',
+                           tax_aggregate = 'Species',
+                           tax_add = 'Genus',
+                           textmap = T,
+                           normalise = F)
+all_plot <- dasn$metadata %>% select(SampleSite, Region, Latitude, 
+                                    Longitude, Design, PEdesign, `IndustrialLoad[%]`,Project ) %>% 
+  unique() 
+
+
+heat_as_spp_t <- data.frame(t(heat_as_spp))
+heat_as_spp_t$SampleSite <- rownames(heat_as_spp_t)
+heat_as_spp_t <- left_join(heat_as_spp_t, all_plot, by = 'SampleSite')
+
+# breaks <- c(0, 0.00001, 0.001, 0.01, Inf)
+# labels <- c("0", "<0.001", "0.001 - 0.01", ">0.01")
+
+
+breaks <- c(0, 0.00001, 0.01, 1, Inf)
+labels <- c("0", "<0.01", "0.01-1", ">1")
+colors <- c("white", "grey80", "#ea9999", "darkred")
+
+x <- 'Ca_Epiflobacter..midas_s_452'
+# Convert the fill variable into a factor with the desired levels and labels
+heat_as_spp_t$fill_category <- cut(
+  heat_as_spp_t[[x]], 
+  breaks = breaks, 
+  labels = labels, 
+  include.lowest = TRUE, 
+  right = FALSE
+)
+
+# Plot with geom_point
+epi_as <- m + geom_point(data = heat_as_spp_t,
+               aes(x = Longitude,
+                   y = Latitude,
+                   fill = fill_category, group = fill_category),
+               size = 2.4,
+               stroke = 0.8,
+               shape = 21,
+               alpha = 1,
+               colour = 'black') +
+    xlim(8, 12.8) +
+    #ylim(54.8, 57.9) +
+    scale_fill_manual(values = colors, 
+                      name = 'Relative\nabundance (%)', 
+                      drop = FALSE) +
+    guides(fill = guide_legend(override.aes = list(shape = 21, size = 2),  nrow = 2))+
+  labs(title = 'Activated sludge')+
+    theme(legend.position = 'bottom', legend.title = element_text(size = 7, face = 'bold'),
+          legend.text = element_text(size = 7),
+          title = element_text(size = 8, face = 'bold'),
+          legend.margin=margin(0,0,0,-10),
+          plot.title = element_text(hjust = 0.5, size = 12),
+        legend.key.size = unit(0.01, "cm")
+    )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### influent
 tax_vector_spp <- c('s__midas_s_452')
 epi_select <- amp_subset_taxa(diwwn, tax_vector = tax_vector_spp)
 
@@ -152,53 +229,63 @@ heat_as_spp_t <- data.frame(t(heat_as_spp))
 heat_as_spp_t$SampleSite <- rownames(heat_as_spp_t)
 heat_as_spp_t <- left_join(heat_as_spp_t, all_plot, by = 'SampleSite')
 
-leg_iww <- heat_as_spp_t
+breaks <- c(0, 0.00001, 0.001, 0.01, Inf)
+labels <- c("0", "<0.001", "0.001-0.01", ">0.01")
+colors <- c("white", "grey80", "#ea9999", "darkred")
 
-custom_format <- function(x) {
-  ifelse(x == 0, "0", scales::number(x, accuracy = 0.01))
-}
+x <- 'Ca_Epiflobacter..midas_s_452'
+# Convert the fill variable into a factor with the desired levels and labels
+heat_as_spp_t$fill_category <- cut(
+  heat_as_spp_t[[x]], 
+  breaks = breaks, 
+  labels = labels, 
+  include.lowest = TRUE, 
+  right = FALSE
+)
 
-iww_map_func <- function(x) {
-  m + geom_point(data = heat_as_spp_t,
-                 aes(x=Longitude,
-                     y=Latitude,
-                     fill = get(x),
-                     group = get(x)), 
-                 size=2.4,
-                 stroke = 0.8,
-                 shape = 21,
-                 alpha = 0.8,
-                 colour = 'black' ) +
-    xlim(8,12.8)+
-    #ylim(54.8,57.9)+
-  scale_fill_gradient('Relative\nabundance (%)' ,low='white', high='darkred', na.value = 'white',
-                      labels = custom_format,
-                      breaks = c(0,0.008,0.016)) +
-    labs(title = paste0(x)) +
-    theme(legend.position = 'bottom',
+# Plot with geom_point
+epi_iww <- m + geom_point(data = heat_as_spp_t,
+               aes(x = Longitude,
+                   y = Latitude,
+                   fill = fill_category, group = fill_category),
+               size = 2.4,
+               stroke = 0.8,
+               shape = 21,
+               alpha = 1,
+               colour = 'black') +
+    xlim(8, 12.8) +
+    #ylim(54.8, 57.9) +
+    scale_fill_manual(values = colors, 
+                      name = 'Relative\nabundance (%)', 
+                      drop = FALSE) +
+    guides(fill = guide_legend(override.aes = list(shape = 21, size = 2), nrow = 2))+
+  labs(title = 'Influent')+
+    theme(legend.position = 'bottom', legend.title = element_text(size = 7, face = 'bold'),
+          legend.text = element_text(size = 7),
           title = element_text(size = 8, face = 'bold'),
-          legend.margin=margin(0,0,0,-10)
+          legend.margin=margin(0,0,0,-10),
+          plot.title = element_text(hjust = 0.5, size = 12),
+        legend.key.size = unit(0.02, "cm")
     )
-}
 
 
-epi_iww <- iww_map_func('Ca_Epiflobacter..midas_s_452')+ 
-  labs(title = "Influent") +
-  theme(plot.title = element_text(hjust = 0.5, size = 14),
-        legend.key.size = unit(0.3, "cm"))
 
 
 ```
 
 ```{r}
-epi_plot <- epi + epi_iww
+epi_plot <- epi_as + epi_iww
 ggsave(filename = "output/Fig07_epi.png",
          epi_plot,
-         width = 8, height = 3.8)
+         width = 7, height = 3.3)
 ggsave(filename = "output/Fig07_epi.pdf", epi_plot,
-         width = 8, height = 3.8, useDingbats=FALSE, limitsize=FALSE)
+         width = 7, height = 3.3, useDingbats=FALSE, limitsize=FALSE)
 
 ```
+
+
+
+
 
 
 
