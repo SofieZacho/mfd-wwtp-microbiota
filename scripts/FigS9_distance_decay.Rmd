@@ -157,7 +157,7 @@ p_AS_bray_genus <- ggplot(data = dbs_V13genera_bc, aes(x = geo_km, y = (1-commun
 
 
 
-#calculate distance matrix (Soerensen)
+#calculate distance matrix (Sørensen)
 dist.sor_V13genera = vegdist(abund2_V13genera, method = "bray", binary = TRUE)
 
 #mantel test
@@ -327,7 +327,7 @@ p_AS_bray_species <- ggplot(data = dbs_V13species_bc, aes(x = geo_km, y = (1-com
 
 
 
-#calculate distance matrix (Soerensen)
+#calculate distance matrix (Sørensen)
 dist.sor_V13species = vegdist(abund2_V13species, method = "bray", binary = TRUE)
 
 #mantel test
